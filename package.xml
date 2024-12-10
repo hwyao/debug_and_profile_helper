@@ -5,7 +5,7 @@
   <description>The debug_and_profile_helper package to provide helper functions for debug and stopwatch style timing</description>
 
   <!-- One maintainer tag required, multiple allowed, one person per tag -->
-  <maintainer email="haowen.yao-AT-tum.de">Haowen Yao</maintainer>
+  <maintainer email="haowen.yao@tum.de">Haowen Yao</maintainer>
 
   <!-- One license tag required, multiple allowed, one license per tag -->
   <license>MIT</license>

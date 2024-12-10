@@ -43,8 +43,13 @@ namespace debug_and_profile_helper {
     void LoggerFile::logInternal(const std::string& name, const std::string& data) const {
         SPDLOG_LOGGER_INFO(data_->logger, "{}: {}", name, data);
     }
+}
 
 #ifdef USE_ROS
+#include <ros/ros.h>
+#include <std_msgs/Float64.h>
+
+namespace debug_and_profile_helper {
     struct LoggerROS::pimplData {
         ros::NodeHandle nh;
         std::string topicPrefix;
@@ -62,5 +67,5 @@ namespace debug_and_profile_helper {
     void LoggerROS::log() const {
 
     }
-#endif // USE_ROS
 } // namespace debug_and_profile_helper
+#endif // USE_ROS

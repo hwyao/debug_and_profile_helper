@@ -146,9 +146,10 @@ namespace debug_and_profile_helper {
          */
         void logInternal(const std::string& name, const std::string& data) const;
     };
+} // namespace debug_and_profile_helper
 
 #ifdef USE_ROS
-    #include <ros/ros.h>
+namespace debug_and_profile_helper {
     /**
      * @class LoggerROS
      * @brief A class for logging messages to ROS.
@@ -157,7 +158,7 @@ namespace debug_and_profile_helper {
      * to ROS. 
      */
     class LoggerROS : public LoggerBase<LoggerROS> {
-        friend class LoggerBase<LoggerFile>;    /**< Declare the Base class as a friend to use its protected members. */
+        friend class LoggerBase<LoggerROS>;    /**< Declare the Base class as a friend to use its protected members. */
     private:        
         struct pimplData;                       /**< Forward declaration of the private implementation data struct. */
         struct pimplDataDeleter {               /**< A deleter for the unique pointer to the private implementation data. */
@@ -192,8 +193,7 @@ namespace debug_and_profile_helper {
             
         }
     };
-#endif // USE_ROS
-
 } // namespace debug_and_profile_helper
+#endif // USE_ROS
 
 #endif // DEBUG_AND_PROFILE_HELPER__HELPER_CLASS_

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.12...3.28)
+cmake_minimum_required(VERSION 3.0.2)
 project(debug_and_profile_helper)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
@@ -67,7 +67,7 @@ if (USE_ROS)
 
   catkin_package(
     INCLUDE_DIRS include
-    LIBRARIES debug_and_profile_helper
+    LIBRARIES ${PROJECT_NAME}
     CATKIN_DEPENDS roscpp
   #  DEPENDS system_lib
   )
@@ -79,10 +79,6 @@ endif()
 
 ## Specify additional locations of header files, set up the library.
 if (USE_ROS)
-  include_directories(
-    ${catkin_INCLUDE_DIRS}
-  )
-
   add_library(debug_and_profile_helper SHARED
     src/helper_class.cpp
   )
@@ -92,8 +88,11 @@ if (USE_ROS)
   target_compile_definitions(debug_and_profile_helper PUBLIC 
     USE_ROS)
 
-  target_link_libraries(debug_and_profile_helper
+  target_link_libraries(debug_and_profile_helper PUBLIC
     ${catkin_LIBRARIES}
+  )
+  target_include_directories(debug_and_profile_helper PUBLIC
+    ${catkin_INCLUDE_DIRS}
   )
 else()
   add_library(debug_and_profile_helper STATIC
@@ -102,15 +101,14 @@ else()
 
   target_compile_features(debug_and_profile_helper PUBLIC
     cxx_std_17)
-
-  target_include_directories(debug_and_profile_helper PUBLIC
-    include
-  )
 endif()
 
-## Link the library with spdlog in both cases
+## Link the library with spdlog and set the include directories
 target_link_libraries(debug_and_profile_helper PRIVATE 
   spdlog::spdlog 
+)
+target_include_directories(debug_and_profile_helper PUBLIC
+  include
 )
 
 ## if BUILD_EXAMPLES is ON, build examples
