@@ -160,7 +160,7 @@ namespace debug_and_profile_helper {
     class LoggerROS : public LoggerBase<LoggerROS> {
         friend class LoggerBase<LoggerROS>;    /**< Declare the Base class as a friend to use its protected members. */
     private:        
-        struct pimplData;                       /**< Forward declaration of the private implementation data struct. */
+        class pimplData;                       /**< Forward declaration of the private implementation data struct. */
         struct pimplDataDeleter {               /**< A deleter for the unique pointer to the private implementation data. */
             void operator()(pimplData* p);
         };

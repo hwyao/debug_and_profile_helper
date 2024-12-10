@@ -14,19 +14,19 @@ else()
 endif()
 option(USE_ROS "Build with ROS support" ${USE_ROS_DEFAULT})
 
-## if this is the top-level CMakeLists.txt, set the BUILD_EXAMPLES on
+## if this is the top-level CMakeLists.txt, set the BUILD_EXAMPLE on
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-  set(BUILD_EXAMPLES_DEFAULT ON)
+  set(BUILD_EXAMPLE_DEFAULT ON)
 else()
-  set(BUILD_EXAMPLES_DEFAULT OFF)
+  set(BUILD_EXAMPLE_DEFAULT OFF)
 endif()
-option(BUILD_EXAMPLES "Build examples" ${BUILD_EXAMPLES_DEFAULT})
+option(BUILD_EXAMPLE "Build example" ${BUILD_EXAMPLE_DEFAULT})
 
 ## display options
 message(STATUS 
   "[debug_and_profile_helper] options:
              USE_ROS:    ${USE_ROS}
-      BUILD_EXAMPLES:    ${BUILD_EXAMPLES}"
+       BUILD_EXAMPLE:    ${BUILD_EXAMPLE}"
 )
 
 include(FetchContent)
@@ -111,12 +111,20 @@ target_include_directories(debug_and_profile_helper PUBLIC
   include
 )
 
-## if BUILD_EXAMPLES is ON, build examples
-if (BUILD_EXAMPLES)
+## if BUILD_EXAMPLE is ON, build example
+if (BUILD_EXAMPLE)
   # the list of example names in the example folder
   list(APPEND example_names
     1-raw_LoggerFile_usage
   )
+
+  # the list of example names with ROS functionalities
+  if (USE_ROS)
+    list(APPEND example_names
+      2-raw_LoggerROS_usage
+    )
+  endif()
+
 
   # build each example
   foreach(example_name IN LISTS example_names)

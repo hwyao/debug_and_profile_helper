@@ -50,8 +50,9 @@ namespace debug_and_profile_helper {
 #include <std_msgs/Float64.h>
 
 namespace debug_and_profile_helper {
-    struct LoggerROS::pimplData {
-        ros::NodeHandle nh;
+    class LoggerROS::pimplData {
+    public:
+        std::shared_ptr<ros::NodeHandle> nh;
         std::string topicPrefix;
         int queue_size;
     };
@@ -61,11 +62,22 @@ namespace debug_and_profile_helper {
     }
 
     LoggerROS::LoggerROS(const std::string& topicPrefix) : data_{ new pimplData() } {
+        // initialize the ROS node
+        int argc = 0;
+        char** argv = nullptr;
+        ros::init(argc, argv, "debug_and_profile_helper");
 
+        // initialize the pimplData object with a node handle with the provided topic prefix
+        data_->nh = std::make_shared<ros::NodeHandle>();
+        data_->topicPrefix = topicPrefix;
+        data_->queue_size = 100;
     }
 
     void LoggerROS::log() const {
-
+        static ros::Publisher pub = data_-> nh -> advertise<std_msgs::Float64>(data_->topicPrefix + "/empty_log", data_->queue_size);
+        std_msgs::Float64 msg;
+        msg.data = 0.0;
+        pub.publish(msg);
     }
 } // namespace debug_and_profile_helper
 #endif // USE_ROS
