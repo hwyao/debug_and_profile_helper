@@ -46,22 +46,14 @@ namespace debug_and_profile_helper {
 }
 
 #ifdef USE_ROS
-#include <ros/ros.h>
 #include <std_msgs/Float64.h>
 
 namespace debug_and_profile_helper {
-    class LoggerROS::pimplData {
-    public:
-        std::shared_ptr<ros::NodeHandle> nh;
-        std::string topicPrefix;
-        int queue_size;
-    };
-
-    void LoggerROS::pimplDataDeleter::operator()(LoggerROS::pimplData* p) {
+    void LoggerROS::dataDeleter::operator()(LoggerROS::data* p) {
         delete p;
     }
 
-    LoggerROS::LoggerROS(const std::string& topicPrefix) : data_{ new pimplData() } {
+    LoggerROS::LoggerROS(const std::string& topicPrefix) : data_{ new data() } {
         // initialize the ROS node
         int argc = 0;
         char** argv = nullptr;
@@ -71,6 +63,7 @@ namespace debug_and_profile_helper {
         data_->nh = std::make_shared<ros::NodeHandle>();
         data_->topicPrefix = topicPrefix;
         data_->queue_size = 100;
+        data_->customFillFuncs_.clear();
     }
 
     void LoggerROS::log() const {

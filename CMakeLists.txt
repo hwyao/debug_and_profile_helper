@@ -90,6 +90,7 @@ if (USE_ROS)
 
   target_link_libraries(debug_and_profile_helper PUBLIC
     ${catkin_LIBRARIES}
+    Eigen3::Eigen
   )
   target_include_directories(debug_and_profile_helper PUBLIC
     ${catkin_INCLUDE_DIRS}
