@@ -42,6 +42,13 @@ namespace debug_and_profile_helper {
          */
         LoggerFile(const std::string& filePath = "");
         
+        /**
+         * @brief Destroy the Logger File object
+         * 
+         * Default destructor for the LoggerFile class.
+         */
+        ~LoggerFile() noexcept override = default;    
+        
     public:
         /**
          * @brief log a message to the file.
@@ -128,10 +135,11 @@ namespace debug_and_profile_helper {
         template <typename T>
         typename std::enable_if<!has_insertion_operator<T>::value, std::string>::type
         formatData(const T& data) const {
-            static_assert(has_insertion_operator<T>::value, "\n\n Type T is not supported for log(). Please: \
+            static_assert(has_insertion_operator<T>::value, 
+            "\n\n Type T is not supported for log(). Please do one of the options: \
             \n1. implement operator<< for T, std::ostream \
-            \n2. or specialize formatData(const T& data). \
-            \nFor exact which T, please check the error message above [T = ...].");
+            \n2. specialize formatData(const T& data). \
+            \nFor exact which T, please check the error message above [T = ...].\n");
             return {};
         }
 

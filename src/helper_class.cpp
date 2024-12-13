@@ -67,7 +67,8 @@ namespace debug_and_profile_helper {
     }
 
     void LoggerROS::log() const {
-        static ros::Publisher pub = data_-> nh -> advertise<std_msgs::Float64>(data_->topicPrefix + "/empty_log", data_->queue_size);
+        static ros::Publisher pub = data_-> nh -> advertise<std_msgs::Float64>
+                                    (data_->topicPrefix + "/empty_log", data_->queue_size);
         std_msgs::Float64 msg;
         msg.data = 0.0;
         pub.publish(msg);
