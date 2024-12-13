@@ -1,3 +1,12 @@
+/**
+ * @file 2-raw_LoggerROS_usage.cpp
+ * @author Haowen Yao
+ * @brief Example usage of the LoggerROS class.
+ * @date 2024-12-13
+ * 
+ * @copyright Copyright (c) 2024
+ * 
+ */
 #include <chrono>
 #include <thread>
 #include <memory>

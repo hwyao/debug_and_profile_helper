@@ -25,13 +25,14 @@ namespace debug_and_profile_helper {
      * to a file. 
      */
     class LoggerFile : public LoggerBase<LoggerFile> {
-        friend class LoggerBase<LoggerFile>;    /**< Declare the Base class as a friend to use its protected members. */
+        friend class LoggerBase<LoggerFile>;    // Declare the Base class as a friend to use its protected members.
     private:
-        class pimplData;                        /**< Forward declaration of the private implementation data struct. */
-        struct pimplDataDeleter {               /**< A deleter for the unique pointer to the private implementation data. */
+        class pimplData;                        
+        /// A deleter for the unique pointer to the private implementation data.
+        struct pimplDataDeleter {               
             void operator()(pimplData* p);
-        };
-        std::unique_ptr<pimplData, pimplDataDeleter> data_; /**< A unique pointer to the private implementation data. */
+        };                                                             
+        std::unique_ptr<pimplData, pimplDataDeleter> data_; ///< A unique pointer to the private implementation data. 
         
         /**
          * @brief Constructs a LoggerFile object and opens the log file. Default file path is empty. (current directory)
@@ -41,7 +42,7 @@ namespace debug_and_profile_helper {
          * class is a singleton.
          */
         LoggerFile(const std::string& filePath = "");
-        
+
         /**
          * @brief Destroy the Logger File object
          * 
@@ -53,7 +54,7 @@ namespace debug_and_profile_helper {
         /**
          * @brief log a message to the file.
          * 
-         * This function will log a message to the file, the message itself is a default message.
+         * Log a default message to the file.
          */
         void log() const;
 
@@ -64,10 +65,7 @@ namespace debug_and_profile_helper {
          * @param name The name of the data.
          * @param data The data to be logged.
          * 
-         * This template function will make second parameter more flexible, it will try to
-         * process the second parameter as string with sstream ss << data. If this fails,
-         * please directly call the log function with the second parameter as a formatted string,
-         * or formulate formatData<typename T2>(const T2& data) with your own data type.
+         * Log a message to file. This will try to formatize the second parameter with \ref formatData function. 
          */
         template <typename T>
         void log(const std::string& name, const T& data) const {
@@ -77,24 +75,21 @@ namespace debug_and_profile_helper {
 
     private:
         /**
-         * @def has_insertion_operator<T, void>
          * @brief Check if the type T has an insertion operator. 
          * 
-         * @tparam T The type to check. This is a default implementation, which is triggered when
-         * the type T does not have an insertion operator.
+         * @tparam T The type to check. 
+         * 
+         * Default implementation, triggered when type T does not have insertion operator.
          */
         template <typename T, typename = void>
         struct has_insertion_operator : std::false_type {};
 
         /**
-         * @def has_insertion_operator<T, std::void_t<decltype(std::declval<std::ostream&>() << std::declval<T>())>>
          * @brief Check if the type T has an insertion operator.
          * 
-         * @tparam T The type to check. This is a specialized implementation, which is triggered when
-         * the type T has an insertion operator. If the type T has an insertion operator, std::void_t
-         * will be void, and the struct will be specialized to std::true_type (true). Otherwise, std::void_t 
-         * will not be successfully instantiated, and \ref has_insertion_operator<T> will take over, so the
-         * struct will be std::false_type (false).
+         * @tparam T The type to check. 
+         * 
+         * Specialized implementation, triggered when type T has insertion operator. 
          */
         template <typename T>
         struct has_insertion_operator<
@@ -103,15 +98,14 @@ namespace debug_and_profile_helper {
         > : std::true_type {};
 
         /**
-         * @def formatData(const T& data)
-         * @brief format the data for \ref logInternal function.
+         * @brief A template to format the data for \ref logInternal function.
          * 
          * @tparam T The type of the data to log.
          * @param data the data to be formatted.
-         * @return std::enable_if<has_insertion_operator<T>::value, std::string>::type. Which is basically a string.
+         * @return std::string, the formatted string.
          * 
-         * This template is only successfully instantiated when then has_insertion_operator<T>::value is true.
-         * It will format the data as a string using std::stringstream ss << data if the type T supports insertion operator.
+         * Enabled when then has_insertion_operator<T>::value is true.
+         * Format the data as a string using ss << data if the type T supports insertion operator.
          */
         template <typename T>
         typename std::enable_if<has_insertion_operator<T>::value, std::string>::type
@@ -122,15 +116,14 @@ namespace debug_and_profile_helper {
         }
 
         /**
-         * @brief A template to to handle the error message when the type T is not supported with << operator.
+         * @brief A template to handle the error message when the type T is not supported with << operator.
          * 
          * @tparam T The type of the data to log.
          * @param data The data to be formatted.
-         * @return std::enable_if<!has_insertion_operator<T>::value, std::string>::type, which is basically a string.
+         * @return std::string, the formatted string - but this template will never return, just for SFINAE.
          * 
-         * This uses with Substitution Failure Is Not An Error (SFINAE) skill for the code, so that if the type T
-         * does not support the insertion operator, the compiler will not throw too many error around the \ref formatData
-         * function. Instead, here will throw a more human-readable error message to the user.
+         * Substitution Failure Is Not An Error (SFINAE) skill, enabled to give a human-readable compile error 
+         * to notice the user that the type T is not supported for log().
          */
         template <typename T>
         typename std::enable_if<!has_insertion_operator<T>::value, std::string>::type
@@ -144,13 +137,10 @@ namespace debug_and_profile_helper {
         }
 
         /**
-         * @def logInternal(const std::string& name, const std::string& data) const
-         * @brief Internal function to log the message to the file.
+         * @brief Internal logger function that writes to the file.
          * 
          * @param name The name of the data.
          * @param data The data to be logged.
-         * 
-         * This internal function for \ref LoggerFile class 
          */
         void logInternal(const std::string& name, const std::string& data) const;
     };
@@ -175,24 +165,25 @@ namespace debug_and_profile_helper {
      * @class LoggerROS
      * @brief A class for logging messages to ROS.
      * 
-     * This class inherits from LoggerBase and provides functionality to log messages
-     * to ROS. 
+     * This class inherits from LoggerBase and provides functionality to log messages to ROS. 
      */
     class LoggerROS : public LoggerBase<LoggerROS> {
-        friend class LoggerBase<LoggerROS>;    /**< Declare the Base class as a friend to use its protected members. */
-    private:        
+        friend class LoggerBase<LoggerROS>;    ///< Declare the Base class as a friend to use its protected members. 
+    private:
+        /// A class to store the data. This is not private (PIMPL) since we have to match type for ROS message in header.
         class data {
         public:
             std::shared_ptr<ros::NodeHandle> nh;
             std::string topicPrefix;
             unsigned queue_size;
             std::unordered_map<std::type_index, std::function<void(void*, const void*)>> customFillFuncs_; 
-        };                                    /**< A class to store the data. This is not private since we have to match type for ROS message. */
-        struct dataDeleter {                  /**< A deleter for the unique pointer to the data. */
-            void operator()(data* p);
         };
-        std::unique_ptr<data, dataDeleter> data_;    /**< A unique pointer to the data. */
-        
+        /// A deleter for the unique pointer to the data.                       
+        struct dataDeleter {                  
+            void operator()(data* p);
+        };                                     
+        std::unique_ptr<data, dataDeleter> data_;    ///< A unique pointer to the data. 
+
         /**
          * @brief Constructs a LoggerROS object and initializes the ROS node handle. 
          * 
@@ -339,6 +330,9 @@ namespace debug_and_profile_helper {
          * @tparam MaxCols The maximum number of columns of the Eigen::Matrix.
          * @param msg The ROS Float64MultiArray message to be filled.
          * @param data The Eigen::Matrix data to fill the ROS message.
+         * 
+         * Specialized implementation, which is triggered when the type DataType is an Eigen::Matrix type,
+         * the corresponding ROS message is Float64MultiArray.
          */
         template <typename Scalar, int Rows, int Cols, int Options, int MaxRows, int MaxCols>
         void fillMessage(std_msgs::Float64MultiArray& msg, const Eigen::Matrix<Scalar, Rows, Cols, Options, MaxRows, MaxCols>& data) const{
@@ -352,22 +346,28 @@ namespace debug_and_profile_helper {
             msg.data.resize(data.size());
             std::copy(data.data(), data.data() + data.size(), msg.data.begin());
         }
-
+        
     public:
         /**
          * @brief log a message to the file.
          * 
-         * This function will log a message to the file, the message itself is a default message.
+         * Log a message to the file with default message.
          */
         void log() const;
 
         /**
-         * @brief log a message to ROS.
+         * @brief log a message to the file.
          * 
          * @tparam T The type of the data to log.
          * @param pub_ptr The shared pointer to the ROS publisher, initialized if empty.
          * @param name The name of the data.
          * @param data The data to be logged.
+         * @return void.
+         * 
+         * Log a message to ROS. This will use the ROSMessageType to get corresponding ROS message type,
+         * Then fill the ROS message with either fillMessage() or custom fill function. pub_ptr is better
+         * being initialized as static with nullptr outside in its own scope, so that publisher only 
+         * initialized once and reused for multiple log calls.
          */
         template <typename T>
         typename std::enable_if<is_supported_type<T>::value>::type

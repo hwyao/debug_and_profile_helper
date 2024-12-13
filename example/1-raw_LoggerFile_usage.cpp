@@ -1,3 +1,12 @@
+/**
+ * @file 1-raw_LoggerFile_usage.cpp
+ * @author Haowen Yao
+ * @brief Example usage of the LoggerFile class.
+ * @date 2024-12-13
+ * 
+ * @copyright Copyright (c) 2024
+ * 
+ */
 #include <Eigen/Dense>
 #include <sstream>
 #include <string>
@@ -6,7 +15,8 @@
 class some_class{
     public:
         some_class(int intValue, double doubleValue) : intValue(intValue), doubleValue(doubleValue) {}
-        // implement the << operator for insertion
+
+        // implement the << operator for insertion of some_class objects
         friend std::ostream& operator<<(std::ostream& os, const some_class& obj){
             os << "class {\nintValue: " << obj.intValue << ", \ndoubleValue: " << obj.doubleValue << " }";
             return os;
@@ -22,6 +32,7 @@ struct some_struct {
     double doubleValue;
 };
 
+// Specialize the formatData function for the some_struct data type
 template<>
 std::string debug_and_profile_helper::LoggerFile::formatData<some_struct>(const some_struct& data) const{
     std::stringstream ss;

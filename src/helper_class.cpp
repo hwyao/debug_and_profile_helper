@@ -1,7 +1,10 @@
 /**
  * @file helper_class.cpp
+ * @author Haowen Yao
  * @brief Implementation of the LoggerFile and LoggerROS classes.
  * @date 2024-12-08
+ * 
+ * @copyright Copyright (c) 2024
  * 
  */
 
@@ -14,10 +17,13 @@
 #include <spdlog/sinks/basic_file_sink.h>
 
 namespace debug_and_profile_helper {
+    /**
+     * @brief A class to store the private implementation data for the LoggerFile class.
+     */
     class LoggerFile::pimplData {
     public:
         std::unique_ptr<spdlog::logger> logger;
-    };
+    };  
 
     void LoggerFile::pimplDataDeleter::operator()(LoggerFile::pimplData* p) {
         delete p;
