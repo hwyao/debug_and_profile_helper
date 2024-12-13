@@ -40,7 +40,9 @@ if (NOT spdlog_FOUND)
         GIT_REPOSITORY https://github.com/gabime/spdlog.git
         GIT_TAG v1.15.0
     )
+    set(SPDLOG_BUILD_SHARED ON)
     FetchContent_MakeAvailable(spdlog)
+    unset(SPDLOG_BUILD_SHARED)
 else()
     message(STATUS "[debug_and_profile_helper] spdlog 1.15.0 found locally")
 endif()
