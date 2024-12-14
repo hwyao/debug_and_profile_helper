@@ -146,7 +146,7 @@ namespace debug_and_profile_helper {
     };
 } // namespace debug_and_profile_helper
 
-#ifdef USE_ROS
+#ifdef DBGNPROF_COMPILE_IN_ROS
 #include <ros/ros.h>
 #include <std_msgs/Int32.h>
 #include <std_msgs/UInt32.h>
