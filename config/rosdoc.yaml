@@ -1,0 +1,3 @@
+- builder: doxygen
+  exclude_patterns: '*/example/*'
+  predefined: USE_ROS
