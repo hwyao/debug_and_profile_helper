@@ -101,18 +101,17 @@ else()
   add_library(debug_and_profile_helper STATIC
     src/helper_class.cpp
   )
-
-  target_compile_features(debug_and_profile_helper PUBLIC
-    cxx_std_14)
 endif()
 
-## Link the library with spdlog and set the include directories
+## Link the library with spdlog and, set include directories and compile features
 target_link_libraries(debug_and_profile_helper PRIVATE 
   spdlog::spdlog 
 )
 target_include_directories(debug_and_profile_helper PUBLIC
   include
 )
+target_compile_features(debug_and_profile_helper PUBLIC 
+  cxx_std_17)
 
 ## if BUILD_EXAMPLE is ON, build example
 if (DBGNPROF_BUILD_EXAMPLE)
@@ -122,9 +121,10 @@ if (DBGNPROF_BUILD_EXAMPLE)
   )
 
   # the list of example names with ROS functionalities
-  if (DBGNPROF_USE_ROS)
+  if (DBGNPROF_COMPILE_IN_ROS)
     list(APPEND example_names
       2-raw_LoggerROS_usage
+      3-macro_combine_standalone
     )
   endif()
 
