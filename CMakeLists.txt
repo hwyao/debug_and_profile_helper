@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.12...3.28)
+cmake_minimum_required(VERSION 3.0.2)
 project(debug_and_profile_helper)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
@@ -6,27 +6,27 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 #add_compile_options(-g) # add debug information
 
-## if this file is built by catkin, USE_ROS is default ON, otherwise OFF
+## if this file is built by catkin, DBGNPROF_USE_ROS is default ON, otherwise OFF
 if (DEFINED CATKIN_DEVEL_PREFIX)
-  set(USE_ROS_DEFAULT ON)
+  set(DBGNPROF_USE_ROS_DEFAULT ON)
 else()
-  set(USE_ROS_DEFAULT OFF)
+  set(DBGNPROF_USE_ROS_DEFAULT OFF)
 endif()
-option(USE_ROS "Build with ROS support" ${USE_ROS_DEFAULT})
+option(DBGNPROF_USE_ROS "Build with ROS support" ${DBGNPROF_USE_ROS_DEFAULT})
 
-## if this is the top-level CMakeLists.txt, set the BUILD_EXAMPLES on
-if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-  set(BUILD_EXAMPLES_DEFAULT ON)
+## if this is the top-level CMakeLists.txt, and the DBGNPROF_USE_ROS is OFF, build example
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR AND NOT DBGNPROF_USE_ROS)
+  set(DBGNPROF_BUILD_EXAMPLE_DEFAULT ON)
 else()
-  set(BUILD_EXAMPLES_DEFAULT OFF)
+  set(DBGNPROF_BUILD_EXAMPLE_DEFAULT OFF)
 endif()
-option(BUILD_EXAMPLES "Build examples" ${BUILD_EXAMPLES_DEFAULT})
+option(DBGNPROF_BUILD_EXAMPLE "Build example" ${DBGNPROF_BUILD_EXAMPLE_DEFAULT})
 
 ## display options
 message(STATUS 
   "[debug_and_profile_helper] options:
-             USE_ROS:    ${USE_ROS}
-      BUILD_EXAMPLES:    ${BUILD_EXAMPLES}"
+         DBGNPROF_USE_ROS:    ${DBGNPROF_USE_ROS}
+   DBGNPROF_BUILD_EXAMPLE:    ${DBGNPROF_BUILD_EXAMPLE}"
 )
 
 include(FetchContent)
@@ -38,9 +38,11 @@ if (NOT spdlog_FOUND)
     FetchContent_Declare(
         spdlog
         GIT_REPOSITORY https://github.com/gabime/spdlog.git
-        GIT_TAG v1.15.0
+        GIT_TAG v1.15.0 
     )
+    set(SPDLOG_BUILD_SHARED ON)
     FetchContent_MakeAvailable(spdlog)
+    unset(SPDLOG_BUILD_SHARED)
 else()
     message(STATUS "[debug_and_profile_helper] spdlog 1.15.0 found locally")
 endif()
@@ -60,14 +62,14 @@ else()
 endif()
 
 ## if this file is built by catkin, enable catkin package settings
-if (USE_ROS)
+if (DBGNPROF_USE_ROS)
   find_package(catkin REQUIRED COMPONENTS
     roscpp
   )
 
   catkin_package(
     INCLUDE_DIRS include
-    LIBRARIES debug_and_profile_helper
+    LIBRARIES ${PROJECT_NAME}
     CATKIN_DEPENDS roscpp
   #  DEPENDS system_lib
   )
@@ -78,11 +80,7 @@ endif()
 ###########
 
 ## Specify additional locations of header files, set up the library.
-if (USE_ROS)
-  include_directories(
-    ${catkin_INCLUDE_DIRS}
-  )
-
+if (DBGNPROF_USE_ROS)
   add_library(debug_and_profile_helper SHARED
     src/helper_class.cpp
   )
@@ -92,8 +90,12 @@ if (USE_ROS)
   target_compile_definitions(debug_and_profile_helper PUBLIC 
     USE_ROS)
 
-  target_link_libraries(debug_and_profile_helper
+  target_link_libraries(debug_and_profile_helper PUBLIC
     ${catkin_LIBRARIES}
+    Eigen3::Eigen
+  )
+  target_include_directories(debug_and_profile_helper PUBLIC
+    ${catkin_INCLUDE_DIRS}
   )
 else()
   add_library(debug_and_profile_helper STATIC
@@ -101,24 +103,30 @@ else()
   )
 
   target_compile_features(debug_and_profile_helper PUBLIC
-    cxx_std_17)
-
-  target_include_directories(debug_and_profile_helper PUBLIC
-    include
-  )
+    cxx_std_14)
 endif()
 
-## Link the library with spdlog in both cases
+## Link the library with spdlog and set the include directories
 target_link_libraries(debug_and_profile_helper PRIVATE 
   spdlog::spdlog 
 )
+target_include_directories(debug_and_profile_helper PUBLIC
+  include
+)
 
-## if BUILD_EXAMPLES is ON, build examples
-if (BUILD_EXAMPLES)
+## if BUILD_EXAMPLE is ON, build example
+if (DBGNPROF_BUILD_EXAMPLE)
   # the list of example names in the example folder
   list(APPEND example_names
     1-raw_LoggerFile_usage
   )
+
+  # the list of example names with ROS functionalities
+  if (DBGNPROF_USE_ROS)
+    list(APPEND example_names
+      2-raw_LoggerROS_usage
+    )
+  endif()
 
   # build each example
   foreach(example_name IN LISTS example_names)
@@ -133,7 +141,7 @@ endif()
 ## Install ##
 #############
 
-# if (USE_ROS)
+# if (DBGNPROF_USE_ROS)
 
 # else()
   

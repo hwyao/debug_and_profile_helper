@@ -1,3 +1,12 @@
+/**
+ * @file logger_base.hpp
+ * @author Haowen Yao
+ * @brief Classes for logging messages, provides base class as singleton pattern.
+ * @date 2024-12-08
+ * 
+ * @copyright Copyright (c) 2024
+ * 
+ */
 #ifndef DEBUG_AND_PROFILE_HELPER__LOGGER_BASE_HPP
 #define DEBUG_AND_PROFILE_HELPER__LOGGER_BASE_HPP
 
@@ -37,7 +46,7 @@ public:
      * @brief Log the data.
      * 
      * This is a dummy function that must be implemented in the derived classes, other polymorphic
-     * functions can be added here.
+     * functions can be added with the same name.
      */
     virtual void log() const = 0;
 };
