@@ -52,7 +52,7 @@ namespace debug_and_profile_helper {
     }
 }
 
-#ifdef USE_ROS
+#ifdef DBGNPROF_COMPILE_IN_ROS
 #include <std_msgs/Float64.h>
 
 namespace debug_and_profile_helper {
