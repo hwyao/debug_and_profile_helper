@@ -53,15 +53,13 @@ else()
 endif()
 
 ## import Eigen
-find_package(Eigen3 QUIET)
+find_package(Eigen3 3.3.7 QUIET)
 if (NOT EIGEN3_FOUND)
-  message(STATUS "[debug_and_profile_helper] Eigen not found, using FetchContent to get it")
-  FetchContent_Declare(
-      eigen
-      GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
-      GIT_TAG 3.3.7
-  )
-  FetchContent_MakeAvailable(eigen)
+  message(STATUS "[debug_and_profile_helper] Eigen 3.3.7+ not found, using FetchContent to get it. 
+    To speed up the build, consider installing Eigen by 
+           `sudo apt install libeigen3-dev`
+    Use noetic + focal as the target platform for apt or install Eigen 3.3.7+ manually.")
+  find_package(Eigen3 3.3.7 REQUIRED)
 else()
   message(STATUS "[debug_and_profile_helper] Eigen 3.3.7 found locally")
 endif()
@@ -79,9 +77,13 @@ if (DBGNPROF_COMPILE_IN_ROS)
   )
 
   catkin_package(
-    INCLUDE_DIRS include
-    LIBRARIES ${PROJECT_NAME}
-    CATKIN_DEPENDS roscpp
+    INCLUDE_DIRS 
+      include
+      ${CMAKE_CURRENT_BINARY_DIR}/include
+    LIBRARIES 
+      debug_and_profile_helper
+    CATKIN_DEPENDS
+      roscpp
   #  DEPENDS system_lib
   )
 endif()
