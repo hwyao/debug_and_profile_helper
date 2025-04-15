@@ -10,10 +10,9 @@
 #include <chrono>
 #include <thread>
 #include <memory>
-#include <debug_and_profile_helper/helper_macros.hpp>
-#include <ros/ros.h>
 #include <Eigen/Dense>
-#include <std_msgs/Int32.h>
+#define DBGNPROF_COMPILE_IN_ROS
+#include <debug_and_profile_helper/helper_class.hpp>
 
 class some_type {
 public:

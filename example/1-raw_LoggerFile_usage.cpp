@@ -7,10 +7,10 @@
  * @copyright Copyright (c) 2024
  * 
  */
-#include <Eigen/Dense>
 #include <sstream>
 #include <string>
-#include <debug_and_profile_helper/helper_macros.hpp>
+#include <Eigen/Dense>
+#include <debug_and_profile_helper/helper_class.hpp>
 
 class some_class{
     public:

@@ -53,18 +53,22 @@ else()
 endif()
 
 ## import Eigen
-find_package(Eigen 3.4.0 QUIET)
-if (NOT Eigen_FOUND)
-  message(STATUS "[debug_and_profile_helper] Eigen not found, using FetchContent to get it")
-  FetchContent_Declare(
-      eigen
-      GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
-      GIT_TAG 3.4.0
-  )
-  FetchContent_MakeAvailable(eigen)
+find_package(Eigen3 3.3.7 QUIET)
+if (NOT EIGEN3_FOUND)
+  message(STATUS "[debug_and_profile_helper] Eigen 3.3.7+ not found, using FetchContent to get it. 
+    To speed up the build, consider installing Eigen by 
+           `sudo apt install libeigen3-dev`
+    Use noetic + focal as the target platform for apt or install Eigen 3.3.7+ manually.")
+  find_package(Eigen3 3.3.7 REQUIRED)
 else()
-  message(STATUS "[debug_and_profile_helper] Eigen 3.4.0 found locally")
+  message(STATUS "[debug_and_profile_helper] Eigen 3.3.7 found locally")
 endif()
+
+## copy the header files for config files
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/debug_and_profile_helper/config.h.in
+  ${CMAKE_CURRENT_BINARY_DIR}/include/debug_and_profile_helper/config.h
+)
 
 ## if this file is built by catkin, enable catkin package settings
 if (DBGNPROF_COMPILE_IN_ROS)
@@ -73,10 +77,15 @@ if (DBGNPROF_COMPILE_IN_ROS)
   )
 
   catkin_package(
-    INCLUDE_DIRS include
-    LIBRARIES ${PROJECT_NAME}
-    CATKIN_DEPENDS roscpp
-  #  DEPENDS system_lib
+    INCLUDE_DIRS 
+      include
+      ${CMAKE_CURRENT_BINARY_DIR}/include
+    LIBRARIES 
+      debug_and_profile_helper
+    CATKIN_DEPENDS
+      roscpp
+    DEPENDS
+      EIGEN3
   )
 endif()
 
@@ -84,37 +93,31 @@ endif()
 ## Build ##
 ###########
 
-## Specify additional locations of header files, set up the library.
+## Specify additional locations of header files, set up the library in two conditions
+add_library(debug_and_profile_helper SHARED
+  src/helper_class.cpp
+)
 if (DBGNPROF_COMPILE_IN_ROS)
-  add_library(debug_and_profile_helper SHARED
-    src/helper_class.cpp
-  )
-
-  target_compile_definitions(debug_and_profile_helper PUBLIC 
-    DBGNPROF_COMPILE_IN_ROS)
-
   target_link_libraries(debug_and_profile_helper PUBLIC
     ${catkin_LIBRARIES}
-    Eigen3::Eigen
   )
   target_include_directories(debug_and_profile_helper PUBLIC
     ${catkin_INCLUDE_DIRS}
   )
-else()
-  add_library(debug_and_profile_helper STATIC
-    src/helper_class.cpp
-  )
 endif()
 
 ## Link the library with spdlog and, set include directories and compile features
-target_link_libraries(debug_and_profile_helper PRIVATE 
+target_link_libraries(debug_and_profile_helper PUBLIC
+  Eigen3::Eigen
   spdlog::spdlog 
 )
 target_include_directories(debug_and_profile_helper PUBLIC
   include
+  ${CMAKE_CURRENT_BINARY_DIR}/include
 )
 target_compile_features(debug_and_profile_helper PUBLIC 
-  cxx_std_17)
+  cxx_std_17
+)
 
 ## if BUILD_EXAMPLE is ON, build example
 if (DBGNPROF_BUILD_EXAMPLE)
@@ -134,9 +137,7 @@ if (DBGNPROF_BUILD_EXAMPLE)
   # build each example
   foreach(example_name IN LISTS example_names)
     add_executable(${example_name} example/${example_name}.cpp)
-    target_link_libraries(${example_name} PUBLIC
-      debug_and_profile_helper
-      Eigen3::Eigen)
+    target_link_libraries(${example_name} PUBLIC debug_and_profile_helper)
   endforeach()
 endif()
 
