@@ -84,7 +84,8 @@ if (DBGNPROF_COMPILE_IN_ROS)
       debug_and_profile_helper
     CATKIN_DEPENDS
       roscpp
-  #  DEPENDS system_lib
+    DEPENDS
+      EIGEN3
   )
 endif()
 
