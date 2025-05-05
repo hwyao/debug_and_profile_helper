@@ -145,11 +145,11 @@ endif()
 ## Install ##
 #############
 
-# if (DBGNPROF_COMPILE_IN_ROS)
-
-# else()
-  
-# endif()
+# Install Python scripts
+catkin_install_python(PROGRAMS
+  scripts/record_as_rosbag.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
 
 ## Mark executables for installation
 ## See http://docs.ros.org/melodic/api/catkin/html/howto/format1/building_executables.html
