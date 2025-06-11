@@ -69,7 +69,7 @@ namespace debug_and_profile_helper {
         // initialize the pimplData object with a node handle with the provided topic prefix
         data_->nh = std::make_shared<ros::NodeHandle>();
         data_->topicPrefix = topicPrefix;
-        data_->queue_size = 100;
+        data_->queue_size = 5000;
         data_->customFillFuncs_.clear();
     }
 
