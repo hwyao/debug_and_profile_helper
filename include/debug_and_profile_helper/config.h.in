@@ -1,0 +1,3 @@
+#pragma once
+
+#cmakedefine DBGNPROF_COMPILE_IN_ROS

@@ -10,6 +10,8 @@
 #ifndef DEBUG_AND_PROFILE_HELPER__HELPER_CLASS_
 #define DEBUG_AND_PROFILE_HELPER__HELPER_CLASS_
 
+#include "debug_and_profile_helper/config.h"
+
 #include <memory>
 #include <string>
 #include <sstream>
