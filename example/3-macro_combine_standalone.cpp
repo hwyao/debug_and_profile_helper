@@ -36,8 +36,7 @@ int main() {
         DBGNPROF_LOG("doubleValue2", i * 0.2);
         Eigen::Matrix<double, 3, 3> mat = Eigen::Matrix<double, 3, 3>::Random();
         DBGNPROF_LOG("matrix", mat);
-        Eigen::MatrixXd mat2 = Eigen::MatrixXd::Random(2, 2);
-        DBGNPROF_LOG("matrix2", mat2);
+        DBGNPROF_LOG("matrix2", Eigen::MatrixXd::Random(2, 2));
 
         // Do some profiling
         int random_number = dis(gen);
