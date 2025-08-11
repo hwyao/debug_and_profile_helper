@@ -1,11 +1,11 @@
 #ifndef DEBUG_AND_PROFILE_HELPER__HELPER_MACROS_
 #define DEBUG_AND_PROFILE_HELPER__HELPER_MACROS_
 
-#include "debug_and_profile_helper/helper_class.hpp"
-
 #include <string>
 #include <chrono>
 #include <iostream>
+
+#include "debug_and_profile_helper/helper_class.hpp"
 
 //#define DBGNPROF_USE_FILE
 //#define DBGNPROF_USE_ROS
