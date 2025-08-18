@@ -9,8 +9,8 @@
  */
 
 // These macros can be changed for manipulating the behavior of the helper macros
-//#define DBGNPROF_USE_FILE             // Use file as sink to log data, also default aliases will be <>_TO_FILE version
-#define DBGNPROF_USE_ROS                // Use ROS as sink to log data, also default aliases will be <>_TO_ROS version
+#define DBGNPROF_USE_FILE             // Use file as sink to log data, also default aliases will be <>_TO_FILE version
+//#define DBGNPROF_USE_ROS                // Use ROS as sink to log data, also default aliases will be <>_TO_ROS version
 // if both DBGNPROF_USE_FILE and this are defined, aliases will be prioritized to ROS version.
 // if neither of them are defined, all macros will be empty implementation.
 #define DBGNPROF_ENABLE_DEBUG           // Enable the debug logging, otherwise will be empty implementation
@@ -51,5 +51,7 @@ int main() {
         DBGNPROF_START_CLOCK;
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         DBGNPROF_STOP_CLOCK("fixedSleep");                // If you forget to stop the clock, the LOG at next iteration will throw error.
+
+        DBGNPROF_LOG("dummy_separator", 0.0);
     }
 }
