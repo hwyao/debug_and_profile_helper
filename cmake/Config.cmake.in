@@ -1,0 +1,6 @@
+# debug_and_profile_helper Config
+@PACKAGE_INIT@
+
+include("${CMAKE_CURRENT_LIST_DIR}/DebugAndProfileTargets.cmake")
+
+set(debug_and_profile_helper_FOUND TRUE)

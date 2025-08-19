@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="2">
   <name>debug_and_profile_helper</name>
-  <version>0.0.0</version>
+  <version>0.3.0</version>
   <description>The debug_and_profile_helper package to provide helper functions for debug and stopwatch style timing</description>
 
   <!-- One maintainer tag required, multiple allowed, one person per tag -->

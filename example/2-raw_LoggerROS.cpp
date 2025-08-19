@@ -11,7 +11,6 @@
 #include <thread>
 #include <memory>
 #include <Eigen/Dense>
-#define DBGNPROF_COMPILE_IN_ROS
 #include <debug_and_profile_helper/helper_class.hpp>
 
 class some_type {
