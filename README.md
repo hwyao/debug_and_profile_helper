@@ -2,6 +2,8 @@
 
 A lightweight ROS package for debugging and profiling C++ applications. Provides flexible logging capabilities and stopwatch-style timing measurements that can be easily toggled on/off through compile-time macros.
 
+![README title page](image/README.drawio.svg)
+
 ## 🚀 Features
 
 - **File and ROS Logging**: Support both file-based and ROS topic-based logging.
@@ -26,17 +28,45 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(debug_and_profile_helper)
 
 # Use this library
-target_link_libraries(main PRIVATE debug_and_profile_helper Eigen3::Eigen)
+target_link_libraries(main PRIVATE debug_and_profile_helper)
 ```
 
 ### ROS Usage
 
-Clone this package into your ROS workspace's `src` directory, then build it with `catkin build`.
+Clone this package into your ROS workspace's `src` directory.
 
 ```bash
 cd ~/<your_workspace>/src
 git clone https://github.com/hwyao/debug_and_profile_helper
 ```
+
+For other package that would like to use this package you should configure its `CMakeLists.txt` like this:
+```cmake
+# find debug_and_profile_helper package and components
+find_package(catkin REQUIRED COMPONENTS
+  # ... others
+  debug_and_profile_helper
+)
+
+# ... other cmake configuration
+
+# link and include catkin for the executable target that need this.
+include_directories(
+  ${catkin_INCLUDE_DIRS}
+)
+add_executable(main_node src/main.cpp)
+target_link_libraries(main_node
+  ${catkin_LIBRARIES}
+)
+
+# add C++ 17 compile support for executable target(!)
+target_compile_features(main_node PUBLIC 
+  cxx_std_17
+)
+```
+
+Then build it with `catkin build`.
+
 
 ## ▶️ Quick Start
 
