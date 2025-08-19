@@ -36,8 +36,7 @@ int main() {
         DBGNPROF_LOG("doubleValue2", i * 0.2);
         Eigen::Matrix<double, 3, 3> mat = Eigen::Matrix<double, 3, 3>::Random();
         DBGNPROF_LOG("matrix", mat);
-        Eigen::MatrixXd mat2 = Eigen::MatrixXd::Random(2, 2);
-        DBGNPROF_LOG("matrix2", mat2);
+        DBGNPROF_LOG("matrix2", Eigen::MatrixXd::Random(2, 2));
 
         // Do some profiling
         int random_number = dis(gen);
@@ -52,5 +51,7 @@ int main() {
         DBGNPROF_START_CLOCK;
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         DBGNPROF_STOP_CLOCK("fixedSleep");                // If you forget to stop the clock, the LOG at next iteration will throw error.
+
+        DBGNPROF_LOG("dummy_separator", 0.0);
     }
 }
