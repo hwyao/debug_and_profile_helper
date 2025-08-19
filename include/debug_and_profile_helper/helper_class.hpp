@@ -77,24 +77,24 @@ namespace debug_and_profile_helper {
 
     private:
         /**
-         * @brief Check if the type T has an insertion operator. 
+         * @brief Check if the type T has an stream operator. 
          * 
          * @tparam T The type to check. 
          * 
-         * Default implementation, triggered when type T does not have insertion operator.
+         * Default implementation, triggered when type T does not have stream operator.
          */
         template <typename T, typename = void>
-        struct has_insertion_operator : std::false_type {};
+        struct has_stream_operator : std::false_type {};
 
         /**
-         * @brief Check if the type T has an insertion operator.
+         * @brief Check if the type T has an stream operator.
          * 
          * @tparam T The type to check. 
          * 
-         * Specialized implementation, triggered when type T has insertion operator. 
+         * Specialized implementation, triggered when type T has stream operator. 
          */
         template <typename T>
-        struct has_insertion_operator<
+        struct has_stream_operator<
             T, 
             std::void_t<decltype(std::declval<std::ostream&>() << std::declval<T>())>
         > : std::true_type {};
@@ -106,11 +106,11 @@ namespace debug_and_profile_helper {
          * @param data the data to be formatted.
          * @return std::string, the formatted string.
          * 
-         * Enabled when then has_insertion_operator<T>::value is true.
-         * Format the data as a string using ss << data if the type T supports insertion operator.
+         * Enabled when then has_stream_operator<T>::value is true.
+         * Format the data as a string using ss << data if the type T supports stream operator.
          */
         template <typename T>
-        typename std::enable_if<has_insertion_operator<T>::value, std::string>::type
+        typename std::enable_if<has_stream_operator<T>::value, std::string>::type
         formatData(const T& data) const{
             std::stringstream ss;
             ss << data;
@@ -128,9 +128,9 @@ namespace debug_and_profile_helper {
          * to notice the user that the type T is not supported for log().
          */
         template <typename T>
-        typename std::enable_if<!has_insertion_operator<T>::value, std::string>::type
+        typename std::enable_if<!has_stream_operator<T>::value, std::string>::type
         formatData(const T& data) const {
-            static_assert(has_insertion_operator<T>::value, 
+            static_assert(has_stream_operator<T>::value, 
             "\n\n Type T is not supported for log(). Please do one of the options: \
             \n1. implement operator<< for T, std::ostream \
             \n2. specialize formatData(const T& data). \
