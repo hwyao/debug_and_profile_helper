@@ -1,10 +1,20 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(debug_and_profile_helper)
+project(debug_and_profile_helper VERSION 0.3.0 LANGUAGES CXX)
+
+###############
+## Variables ##
+###############
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 #add_compile_options(-g) # add debug information
+
+## enable GNUInstallDirs variables
+# CMAKE_INSTALL_BINDIR: bin
+# CMAKE_INSTALL_LIBDIR: lib
+# CMAKE_INSTALL_INCLUDEDIR: include
+include(GNUInstallDirs)
 
 ## if this file is built by catkin, DBGNPROF_COMPILE_IN_ROS is default ON, otherwise OFF
 if (DEFINED CATKIN_DEVEL_PREFIX)
@@ -34,6 +44,21 @@ message(STATUS
    DBGNPROF_BUILD_EXAMPLE:    ${DBGNPROF_BUILD_EXAMPLE}"
 )
 
+###############
+## Configure ##
+###############
+
+## copy the header files for config files
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/debug_and_profile_helper/config.h.in
+  ${CMAKE_CURRENT_BINARY_DIR}/include/debug_and_profile_helper/config.h
+)
+
+############
+## Import ##
+############
+
+## import FetchContent
 include(FetchContent)
 
 ## import spdlog
@@ -64,13 +89,7 @@ else()
   message(STATUS "[debug_and_profile_helper] Eigen 3.3.7 found locally")
 endif()
 
-## copy the header files for config files
-configure_file(
-  ${CMAKE_CURRENT_SOURCE_DIR}/include/debug_and_profile_helper/config.h.in
-  ${CMAKE_CURRENT_BINARY_DIR}/include/debug_and_profile_helper/config.h
-)
-
-## if this file is built by catkin, enable catkin package settings
+## if this file is built by catkin, import catkin package settings
 if (DBGNPROF_COMPILE_IN_ROS)
   find_package(catkin REQUIRED COMPONENTS
     roscpp
@@ -93,10 +112,11 @@ endif()
 ## Build ##
 ###########
 
-## Specify additional locations of header files, set up the library in two conditions
 add_library(debug_and_profile_helper SHARED
   src/helper_class.cpp
 )
+
+## Specify the catkin-specific variables
 if (DBGNPROF_COMPILE_IN_ROS)
   target_link_libraries(debug_and_profile_helper PUBLIC
     ${catkin_LIBRARIES}
@@ -106,14 +126,25 @@ if (DBGNPROF_COMPILE_IN_ROS)
   )
 endif()
 
+## Specify additional locations of header files, set up the target_include_directories
+if (DBGNPROF_COMPILE_IN_ROS)
+  target_include_directories(debug_and_profile_helper PUBLIC
+  	$<BUILD_INTERFACE:include;${CMAKE_CURRENT_BINARY_DIR}/include>
+    $<INSTALL_INTERFACE:${CATKIN_PACKAGE_INCLUDE_DESTINATION}>
+  )
+else()
+  target_include_directories(debug_and_profile_helper PUBLIC
+  	$<BUILD_INTERFACE:include;${CMAKE_CURRENT_BINARY_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+  )
+endif()
+
 ## Link the library with spdlog and, set include directories and compile features
 target_link_libraries(debug_and_profile_helper PUBLIC
   Eigen3::Eigen
-  spdlog::spdlog 
 )
-target_include_directories(debug_and_profile_helper PUBLIC
-  include
-  ${CMAKE_CURRENT_BINARY_DIR}/include
+target_link_libraries(debug_and_profile_helper PRIVATE
+  spdlog::spdlog
 )
 target_compile_features(debug_and_profile_helper PUBLIC 
   cxx_std_17
@@ -123,14 +154,15 @@ target_compile_features(debug_and_profile_helper PUBLIC
 if (DBGNPROF_BUILD_EXAMPLE)
   # the list of example names in the example folder
   list(APPEND example_names
-    1-raw_LoggerFile_usage
+    1-raw_LoggerFile
+    3-macro_File
   )
 
   # the list of example names with ROS functionalities
   if (DBGNPROF_COMPILE_IN_ROS)
     list(APPEND example_names
-      2-raw_LoggerROS_usage
-      3-macro_combine_standalone
+      2-raw_LoggerROS
+      4-macro_ROS
     )
   endif()
 
@@ -182,7 +214,69 @@ if (DBGNPROF_COMPILE_IN_ROS) # Install when ROS environment is activated
   # )
 
 else() # Install when ROS environment is not activated
+  # install the library and export the cmake targets
+  set_target_properties(debug_and_profile_helper PROPERTIES 
+                        EXPORT_NAME debug_and_profile_helper)
+  
+  # Check if spdlog target exists and can be exported
+  if(TARGET spdlog AND NOT spdlog_FOUND)
+    # spdlog was built via FetchContent, include it in the export
+    install(TARGETS debug_and_profile_helper spdlog
+        EXPORT DebugAndProfileHelperTargets
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}    
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}  
+        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    )
+  else()
+    # spdlog was found externally, don't include it in export
+    install(TARGETS debug_and_profile_helper
+        EXPORT DebugAndProfileHelperTargets
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}    
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}  
+        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    )
+  endif()
 
+  # install the include directories
+  install(DIRECTORY include/debug_and_profile_helper/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/debug_and_profile_helper/
+    FILES_MATCHING PATTERN "*.hpp"
+  )
+  install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/include/debug_and_profile_helper/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/debug_and_profile_helper/
+  )
+
+  # install the export targets
+  install(EXPORT DebugAndProfileHelperTargets
+    FILE DebugAndProfileHelperTargets.cmake
+    NAMESPACE DebugAndProfileHelper::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/debug_and_profile_helper
+  )
+
+  # prepare for the package 
+  include(CMakePackageConfigHelpers)
+  configure_package_config_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Config.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/DebugAndProfileHelperConfig.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/debug_and_profile_helper
+    NO_SET_AND_CHECK_MACRO
+    NO_CHECK_REQUIRED_COMPONENTS_MACRO
+  )
+  write_basic_package_version_file(
+    ${CMAKE_CURRENT_BINARY_DIR}/DebugAndProfileHelperConfigVersion.cmake
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY AnyNewerVersion
+  )
+  install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/DebugAndProfileHelperConfig.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/DebugAndProfileHelperConfigVersion.cmake
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/debug_and_profile_helper
+  )
+
+  export(EXPORT DebugAndProfileHelperTargets
+    FILE ${CMAKE_CURRENT_BINARY_DIR}/DebugAndProfileHelperTargets.cmake
+    NAMESPACE DebugAndProfileHelper::
+  )
 endif()
 
 #############
