@@ -129,12 +129,14 @@ endif()
 ## Specify additional locations of header files, set up the target_include_directories
 if (DBGNPROF_COMPILE_IN_ROS)
   target_include_directories(debug_and_profile_helper PUBLIC
-  	$<BUILD_INTERFACE:include;${CMAKE_CURRENT_BINARY_DIR}/include>
+  	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
     $<INSTALL_INTERFACE:${CATKIN_PACKAGE_INCLUDE_DESTINATION}>
   )
 else()
   target_include_directories(debug_and_profile_helper PUBLIC
-  	$<BUILD_INTERFACE:include;${CMAKE_CURRENT_BINARY_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
   )
 endif()
