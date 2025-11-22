@@ -47,10 +47,10 @@ class LogFileParser:
         self.warning_count = 0
         self.log_pattern = re.compile(
             r'\[([^\]]+)\] \[([^\]]+)\] \[([^\]]+)\] \[([^\]]+)\] ([^:]+):\s*(.*)'
-        )
+        )  # Matches: [timestamp] [logger] [level] [file] variable_name: data
         self.continuation_pattern = re.compile(
             r'^[\s\-\d\.eE\+]+$'
-        )
+        )  # Matches: numeric data lines (whitespace, digits, scientific notation)
         self.data_records = []
         self.variable_names = set()
         self.cycles = []
@@ -85,17 +85,18 @@ class LogFileParser:
     
     def parse_file(self, file_path: str) -> pd.DataFrame:
         """
-        Parse log file and validate format simultaneously
+        Parse structured log text file into DataFrame.
         
+
         Args:
             file_path: Log file path
             
         Returns:
             pd.DataFrame: DataFrame with columns [timestamp, variable_name, value]
         """
-        valid_lines = 0
         total_lines = 0
         empty_lines = 0
+        valid_lines = 0
         continuation_lines = 0
         data_records = []
         
@@ -112,7 +113,7 @@ class LogFileParser:
         temp_timestamp = None
         temp_var_name = None
 
-        # 添加哨兵行作为最后一行
+        # Add sentinel line to trigger final data collection
         sentinel_line = "[END] [END] [END] [END] END: END"
         lines.append(sentinel_line)
 
@@ -126,22 +127,22 @@ class LogFileParser:
             total_lines += 1
 
             match_next = self.log_pattern.match(lines[line_idx])
-            if match_next:   # match the current non-empty value to default
-                # save the last data in temp_data to result, if not empty
+            if match_next:   # New log entry found
+                # Save accumulated data from previous entry
                 if temp_data:
                     record = self._trigger_temp_data_collection(temp_data, temp_timestamp, temp_var_name)
                     data_records.append(record)
                     temp_data = []
 
-                # prepare the next data
+                # Initialize new entry
                 match = match_next
                 temp_timestamp, logger, level, file_info, temp_var_name, data = match.groups()
                 temp_data = [data.strip()]
                 expected_cols = len(data.strip().split())
                 valid_lines += 1
 
-            elif self.continuation_pattern.match(lines[line_idx]): # match the continuation line
-                # if continuation line, first check if previous match is non-empty and dimension aligned
+            elif self.continuation_pattern.match(lines[line_idx]): # Continuation line found
+                # Validate continuation line requirements
                 if not temp_data:
                     self._warn(f"Line {line_idx + 1}: Found continuation line without preceding log entry: {lines[line_idx].strip()[:50]}...")
                     temp_data = []
@@ -152,11 +153,11 @@ class LogFileParser:
                     )
                     temp_data = []
                 else:
-                    # If all checks pass, append to temp_data
+                    # Valid continuation line - append to current entry
                     temp_data.append(lines[line_idx].strip())
                     continuation_lines += 1
 
-            else: # if nothing matched, the previous data should immediately be calculated
+            else: # Invalid line format - first trigger previous data collection, then clear and warn
                 self._warn(f"Line {line_idx + 1} format does not comply with specification: {lines[line_idx].strip()[:50]}...")
                 if temp_data:
                     record = self._trigger_temp_data_collection(temp_data, temp_timestamp, temp_var_name)
@@ -166,7 +167,7 @@ class LogFileParser:
             # increase the data
             line_idx += 1
 
-        # remove sentinel line and reset counter
+        # Clean up sentinel line and adjust counters
         assert lines[-1] == sentinel_line, "INTERNAL PROGRAMMING ERROR: Sentinel line is missing or incorrect."
         lines.pop()
         total_lines -= 1
@@ -188,6 +189,8 @@ class LogFileParser:
         print(f"   {acceptable_lines} Acceptable lines.")
         print(f"    - {valid_lines} Valid log lines.")
         print(f"    - {continuation_lines} Continuation lines.")
+        print(f"   {total_lines - acceptable_lines} Unacceptable lines with warning.")
+        print(f"   Format compliance ratio: {format_ratio:.1%}\n")
 
         if format_ratio < 0.9:  # At least 90% of lines should be acceptable
             self._warn(f"File format validation failed: only {format_ratio:.1%} of lines match expected format")
@@ -199,7 +202,7 @@ class LogFileParser:
             raise ValueError("No valid data records found")
             
         df = pd.DataFrame(data_records)
-        print(f"✅ Successfully parsed {len(df)} data records")
+        print(f"✅ Successfully parsed {len(df)} data records. (Should match valid lines: {valid_lines})")
         print(f"📈 There are {df['variable_name'].nunique()} unique variables")
         return df
     
