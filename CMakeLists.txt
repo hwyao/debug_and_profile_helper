@@ -166,6 +166,7 @@ if (DBGNPROF_BUILD_EXAMPLE)
     list(APPEND example_names
       2-raw_LoggerROS
       4-macro_ROS
+      6-timestamp_ROS
     )
   endif()
 
