@@ -158,6 +158,7 @@ if (DBGNPROF_BUILD_EXAMPLE)
   list(APPEND example_names
     1-raw_LoggerFile
     3-macro_File
+    5-timestamp_File
   )
 
   # the list of example names with ROS functionalities

@@ -47,8 +47,15 @@ namespace debug_and_profile_helper {
         SPDLOG_LOGGER_INFO(data_->logger, "[empty log message]");
     }
 
-    void LoggerFile::logInternal(const std::string& name, const std::string& data) const {
-        SPDLOG_LOGGER_INFO(data_->logger, "{}: {}", name, data);
+    void LoggerFile::logInternal(const std::string& name, const std::string& data) {
+        if (auto ts = getTimestep()) {
+            std::stringstream ss;
+            ss << "[" << *ts << "]; " << data;
+            SPDLOG_LOGGER_INFO(data_->logger, "{}: {}", name, ss.str());
+        } else {
+            registerNormalLog();
+            SPDLOG_LOGGER_INFO(data_->logger, "{}: {}", name, data);
+        }
     }
 }
 

@@ -33,9 +33,11 @@
 #if defined(DBGNPROF_USE_ROS)        
     #define DBGNPROF_LOG          DBGNPROF_LOG_TO_ROS
     #define DBGNPROF_STOP_CLOCK   DBGNPROF_STOP_CLOCK_TO_ROS
+    #define DBGNPROF_COUNT_TIMESTEP DBGNPROF_COUNT_TIMESTEP_TO_ROS
 #else 
     #define DBGNPROF_LOG          DBGNPROF_LOG_TO_FILE
     #define DBGNPROF_STOP_CLOCK   DBGNPROF_STOP_CLOCK_TO_FILE
+    #define DBGNPROF_COUNT_TIMESTEP DBGNPROF_COUNT_TIMESTEP_TO_FILE
 #endif // DBGNPROF_USE_ROS && DBGNPROF_DEFAULT_ROS
 
 // if DBGNPROF_ENABLE_DEBUG is defined, define the logging macros.
@@ -49,6 +51,11 @@
                 std::string debug_name = "DBG_" + std::string(name);\
                 loggerFile_ref__.log(debug_name, data);\
             } while (false);
+
+        #define DBGNPROF_COUNT_TIMESTEP_TO_FILE() \
+            do {\
+                loggerFile_ref__.stepTimestep();\
+            } while (false);
     #endif // DBGNPROF_USE_ROS
 
     #ifdef DBGNPROF_USE_ROS
@@ -60,6 +67,11 @@
                 static std::shared_ptr<ros::Publisher> pub_ptr = nullptr;\
                 std::string debug_name = "DBG_" + std::string(name);\
                 loggerROS_ref__.log(pub_ptr, debug_name, data);\
+            } while (false);
+
+        #define DBGNPROF_COUNT_TIMESTEP_TO_ROS() \
+            do {\
+                loggerROS_ref__.stepTimestep();\
             } while (false);
     #endif // DBGNPROF_USE_ROS
 #endif // DBGNPROF_ENABLE_DEBUG
@@ -138,5 +150,9 @@
 #ifndef DBGNPROF_STOP_CLOCK_TO_ROS
     #define DBGNPROF_STOP_CLOCK_TO_ROS
 #endif // DBGNPROF_STOP_CLOCK_TO_ROS
+
+#ifndef DBGNPROF_COUNT_TIMESTEP
+    #define DBGNPROF_COUNT_TIMESTEP
+#endif // DBGNPROF_COUNT_TIMESTEP
 
 #endif // DEBUG_AND_PROFILE_HELPER__HELPER_MACROS_

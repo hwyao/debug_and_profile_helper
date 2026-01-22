@@ -70,7 +70,7 @@ namespace debug_and_profile_helper {
          * Log a message to file. This will try to formatize the second parameter with \ref formatData function. 
          */
         template <typename T>
-        void log(const std::string& name, const T& data) const {
+        void log(const std::string& name, const T& data) {
             std::string formattedData = formatData<T>(data);
             logInternal(name, formattedData);
         }
@@ -133,8 +133,7 @@ namespace debug_and_profile_helper {
             static_assert(has_stream_operator<T>::value, 
             "\n\n Type T is not supported for log(). Please do one of the options: \
             \n1. implement operator<< for T, std::ostream \
-            \n2. specialize formatData(const T& data). \
-            \nFor exact which T, please check the error message above [T = ...].\n");
+            \n2. specialize formatData(const T& data). \n");
             return {};
         }
 
@@ -144,7 +143,7 @@ namespace debug_and_profile_helper {
          * @param name The name of the data.
          * @param data The data to be logged.
          */
-        void logInternal(const std::string& name, const std::string& data) const;
+        void logInternal(const std::string& name, const std::string& data);
     };
 } // namespace debug_and_profile_helper
 
@@ -350,14 +349,55 @@ namespace debug_and_profile_helper {
             msg.data.resize(evaluated.size());
             std::copy(evaluated.data(), evaluated.data() + evaluated.size(), msg.data.begin());
         }
-        
-    public:
+
         /**
-         * @brief log a message to the file.
+         * @brief 
          * 
-         * Log a message to the file with default message.
+         * @tparam T 
+         * @param msg 
+         * @param data 
+         * @param timestep 
          */
-        void log() const;
+        template <typename T>
+        void fillTimestepMessage(std_msgs::Float64MultiArray& msg, const T& data, double timestep) {
+            msg.layout.dim.clear();
+            msg.layout.dim.resize(3); // Timestep + Rows + Cols (for scalars treated as 1x1)
+
+            msg.layout.dim[0].label = "timestep";
+            msg.layout.dim[0].size = 1;
+
+            std::vector<double> value_vec;
+            if constexpr (std::is_integral<T>::value || std::is_floating_point<T>::value) {
+                value_vec.push_back(static_cast<double>(data));
+                msg.layout.dim[1].label = "rows";
+                msg.layout.dim[1].size = 1;
+                msg.layout.dim[1].stride = 1;
+                msg.layout.dim[2].label = "cols";
+                msg.layout.dim[2].size = 1;
+                msg.layout.dim[2].stride = 1;
+            } else if constexpr (is_eigen_matrix<T>::value) {
+                auto evaluated = data.eval();
+                msg.layout.dim[1].label = "rows";
+                msg.layout.dim[1].size = evaluated.rows();
+                msg.layout.dim[1].stride = evaluated.rows() * evaluated.cols();
+                msg.layout.dim[2].label = "cols";
+                msg.layout.dim[2].size = evaluated.cols();
+                msg.layout.dim[2].stride = evaluated.cols();
+                value_vec.resize(evaluated.size());
+                for(int i=0; i<evaluated.size(); ++i) value_vec[i] = *(evaluated.data() + i);
+            } else {
+                ROS_ERROR_STREAM_ONCE("debug_and_profile_helper: Timestep mode unsupported for this type"+std::string(typeid(T).name())+".\n Should not reach here, contact the developer.");
+            }
+            
+            // Update stride for Dim[0]
+            // Actually, strides are for multi-dim indexing, the definition here is a bit arbitrary.
+            msg.layout.dim[0].stride = 1 + value_vec.size(); 
+
+            // Update data
+            msg.data.clear();
+            msg.data.push_back(timestep);
+            msg.data.insert(msg.data.end(), value_vec.begin(), value_vec.end());
+        }
 
         /**
          * @brief log a message to the file.
@@ -375,16 +415,15 @@ namespace debug_and_profile_helper {
          */
         template <typename T>
         typename std::enable_if<is_supported_type<T>::value>::type
-        log(std::shared_ptr<ros::Publisher>& pub_ptr, const std::string& name, const T& data) {
+        logNormal(std::shared_ptr<ros::Publisher>& pub_ptr, const std::string& name, const T& data) {
             using MsgType = typename ROSMessageType<T>::type;
             if (!pub_ptr) {
                 pub_ptr = std::make_shared<ros::Publisher>(data_ -> nh -> advertise<MsgType>
                                 (data_->topicPrefix + "/" + name, data_->queue_size));
             }
             MsgType msg;
-
+            
             if constexpr (std::is_integral<T>::value || std::is_floating_point<T>::value || is_eigen_matrix<T>::value) {
-                // only enable compiling fillMessage when it is internally supported.
                 this->fillMessage(msg, data);
             } else { 
                 // otherwise use custom fill function
@@ -393,13 +432,66 @@ namespace debug_and_profile_helper {
                     it->second(&msg, &data);
                 } else {
                     ROS_ERROR_STREAM_ONCE("debug_and_profile_helper: Type conversion template detected but function registered for synthesizing ROS message [" 
-                                           + std::string(typeid(MsgType).name()) + "] from type [" + std::string(typeid(T).name())
-                                           + "].\nPlease register a conversion function with LoggerROS::registerCustomType(fillFunc) with signature:\
-                                             \n      void fillFunc([ROS_type]& msg, const [my_type]& data) { /* your way to fill the msg with data. */ }");
+                                           + std::string(typeid(MsgType).name()) + "] from type [" + std::string(typeid(T).name()) + "].\
+                                             \nPlease register a conversion function with LoggerROS::registerCustomType(fillFunc) before first time using publisher with signature:\
+                                             \n\n    void fillFunc("+std::string(typeid(MsgType).name())+"& msg, const ["+std::string(typeid(T).name())+"]& data) { \
+                                             \n        /* your way to fill the msg with data. */ \
+                                             \n      }");
                 }
             }
-            
-            pub_ptr -> publish(msg);
+             pub_ptr -> publish(msg);
+        }
+
+        /**
+         * @brief 
+         * 
+         * @tparam T 
+         * @param pub_ptr 
+         * @param name 
+         * @param data 
+         * @param timestep 
+         */
+        template <typename T>
+        void logTimestep(std::shared_ptr<ros::Publisher>& pub_ptr, const std::string& name, const T& data, double timestep) {
+            using MsgType = std_msgs::Float64MultiArray;
+            if (!pub_ptr) {
+                pub_ptr = std::make_shared<ros::Publisher>(data_ -> nh -> advertise<MsgType>
+                                (data_->topicPrefix + "/" + name, data_->queue_size));
+            }
+            MsgType msg;
+            fillTimestepMessage(msg, data, timestep);
+            pub_ptr->publish(msg);
+        }
+
+    public:
+        /**
+         * @brief log a message to the file.
+         * 
+         * Log a message to the file with default message.
+         */
+        void log() const;
+
+    public:
+        /**
+         * @brief log a message to the file.
+         * 
+         * @tparam T The type of the data to log.
+         * @param pub_ptr The shared pointer to the ROS publisher, initialized if empty.
+         * @param name The name of the data.
+         * @param data The data to be logged.
+         * @return void.
+         * 
+         * Log a message to ROS. Dispatch to Normal or Timestep mode.
+         */
+        template <typename T>
+        typename std::enable_if<is_supported_type<T>::value>::type
+        log(std::shared_ptr<ros::Publisher>& pub_ptr, const std::string& name, const T& data) {
+            if (auto ts = getTimestep()) {
+                logTimestep(pub_ptr, name, data, *ts);
+            } else {
+                registerNormalLog();
+                logNormal(pub_ptr, name, data);
+            }
         }
     
         /**
@@ -425,9 +517,9 @@ namespace debug_and_profile_helper {
                 \n2. Set up a fill function for your type [T = my_type]. and register it with LoggerROS::registerCustomType(fillFunc). with signature:\
                 \n    void fillFunc([ROS_type]& msg, const [my_type]& data) { /* your way to fill the msg with data. */ }\
                 \nFor exact which T, please check the error message above [T = ...].\n");
-            static_assert(!std::is_integral<T>::value, "This template is enabled, but T is a integral type, Should not reach here, contact the developer.");
-            static_assert(!std::is_floating_point<T>::value, "This template is enabled, but T is a floating point type, Should not reach here, contact the developer.");
-            static_assert(!is_eigen_matrix<T>::value, "This template is enabled, but T is a Eigen::Matrix type, Should not reach here, contact the developer."); 
+            static_assert(!std::is_integral<T>::value, "This template is enabled, but T is a integral type.\n Should not reach here, contact the developer.");
+            static_assert(!std::is_floating_point<T>::value, "This template is enabled, but T is a floating point type.\n Should not reach here, contact the developer.");
+            static_assert(!is_eigen_matrix<T>::value, "This template is enabled, but T is a Eigen::Matrix type.\n Should not reach here, contact the developer."); 
         }
 
         /**

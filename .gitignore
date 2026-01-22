@@ -35,5 +35,7 @@
 ## Custom ignore files
 build/
 .vscode/
+.cache/
 recordings/
 doc/
+compile_commands.json
