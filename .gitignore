@@ -32,6 +32,9 @@
 *.out
 *.app
 
+# Python cache files
+__pycache__
+
 ## Custom ignore files
 build/
 .vscode/
