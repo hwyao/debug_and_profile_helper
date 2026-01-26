@@ -58,7 +58,7 @@ namespace debug_and_profile_helper {
          * 
          * Log a default message to the file.
          */
-        void log() const;
+        void log() const override;
 
         /**
          * @brief log a message to the file.
@@ -149,6 +149,7 @@ namespace debug_and_profile_helper {
 
 #ifdef DBGNPROF_COMPILE_IN_ROS
 #include <ros/ros.h>
+#include <ros/message_traits.h>
 #include <std_msgs/Int32.h>
 #include <std_msgs/UInt32.h>
 #include <std_msgs/Int64.h>
@@ -192,7 +193,18 @@ namespace debug_and_profile_helper {
          */
         LoggerROS(const std::string& topicPrefix = "debug_and_profile_helper");
 
-    private:
+        /**
+         * @brief Check if a ROS message type is supported by rosbags parser.
+         * 
+         * @param type_name The ROS message type name (e.g., "geometry_msgs/Pose").
+         * @return true if the type is in the rosbags-supported ROS 1 Noetic whitelist, false otherwise.
+         * 
+         * This function checks the message type name against a static whitelist of standard
+         * ROS 1 Noetic message types that are parseable by the rosbags library. Non-standard
+         * types may require alternative tools like bagpy for parsing.
+         */
+        static bool isRosbagsSupportedType(const std::string& type_name);
+
         /**
          * @brief A template to get the ROS message type for the data type.
          * 
@@ -420,7 +432,9 @@ namespace debug_and_profile_helper {
                 msg.layout.dim[2].size = evaluated.cols();
                 msg.layout.dim[2].stride = evaluated.cols();
                 value_vec.resize(evaluated.size());
-                for(int i=0; i<evaluated.size(); ++i) value_vec[i] = *(evaluated.data() + i);
+                for(int i=0; i<evaluated.size(); ++i) {
+                    value_vec[i] = *(evaluated.data() + i);
+                }
             } else {
                 ROS_ERROR_STREAM_ONCE("debug_and_profile_helper: Timestep mode unsupported for this type"+std::string(typeid(T).name())+".\n Should not reach here, contact the developer.");
             }
@@ -550,9 +564,8 @@ namespace debug_and_profile_helper {
          * 
          * Log a message to the file with default message.
          */
-        void log() const;
+        void log() const override;
 
-    public:
         /**
          * @brief log a message to ROS.
          * 
@@ -575,7 +588,6 @@ namespace debug_and_profile_helper {
             // Maintain backward compatibility with packed timestamp format
             if constexpr (is_builtin_math_type<T>::value) {
                 if (ts_opt) {
-                    // Use packed Float64MultiArray: [timestamp, flattened_data...]
                     logTimestepPacked(pub_ptr, name, data, *ts_opt);
                 } else {
                     registerNormalLog();
@@ -587,24 +599,34 @@ namespace debug_and_profile_helper {
             else {
                 using MsgType = typename ROSMessageType<T>::type;
                 
-                // Initialize publisher if needed
-                if (!pub_ptr) {
-                    pub_ptr = std::make_shared<ros::Publisher>(data_ -> nh -> advertise<MsgType>
-                                    (data_->topicPrefix + "/" + name, data_->queue_size));
+                // Guard clause 1: Check if fill function is registered
+                auto it = data_ -> customFillFuncs_.find(std::type_index(typeid(T)));
+                if (it == data_ -> customFillFuncs_.end()) {
+                    ROS_ERROR_STREAM_ONCE("debug_and_profile_helper: Type conversion defined but no fill function registered for synthesizing ROS message [" 
+                                           + std::string(typeid(MsgType).name()) + "] from type [" + std::string(typeid(T).name()) + "].\n"
+                                             "Please register a conversion function with LoggerROS::registerCustomType(fillFunc) before first time using publisher with signature:\n"
+                                             "\n    void fillFunc("+std::string(typeid(MsgType).name())+"& msg, const ["+std::string(typeid(T).name())+"]& data) { \n"
+                                             "        /* your way to fill the msg with data. */ \n"
+                                             "      }");
+                    return; // Early return - don't initialize publisher or execute
+                }
+                
+                // Get message type name and check rosbags support
+                std::string msg_type_name = ros::message_traits::DataType<MsgType>::value();
+                if (!isRosbagsSupportedType(msg_type_name)) {
+                    ROS_WARN_STREAM_ONCE("debug_and_profile_helper: Message type '" << msg_type_name 
+                                        << "' is not supported by rosbags parser. "
+                                        << "You can still use bagpy, but be careful about precision loss and complex YAML parsing issues.");
                 }
                 
                 // Create and fill message
                 MsgType msg;
-                auto it = data_ -> customFillFuncs_.find(std::type_index(typeid(T)));
-                if (it != data_ -> customFillFuncs_.end()) {
-                    it->second(&msg, &data);
-                } else {
-                    ROS_ERROR_STREAM_ONCE("debug_and_profile_helper: No fill function registered for synthesizing ROS message [" 
-                                           + std::string(typeid(MsgType).name()) + "] from type [" + std::string(typeid(T).name()) + "].\
-                                             \nPlease register a conversion function with LoggerROS::registerCustomType(fillFunc) before first time using publisher with signature:\
-                                             \n\n    void fillFunc("+std::string(typeid(MsgType).name())+"& msg, const ["+std::string(typeid(T).name())+"]& data) { \
-                                             \n        /* your way to fill the msg with data. */ \
-                                             \n      }");
+                it->second(&msg, &data);
+                
+                // Initialize publisher if needed
+                if (!pub_ptr) {
+                    pub_ptr = std::make_shared<ros::Publisher>(data_ -> nh -> advertise<MsgType>
+                                    (data_->topicPrefix + "/" + name, data_->queue_size));
                 }
                 
                 // Inject timestamp if in timestep mode
@@ -635,12 +657,14 @@ namespace debug_and_profile_helper {
         log(std::shared_ptr<ros::Publisher>& pub_ptr, const std::string& name, const T& data) {
             static_assert(is_supported_type<T>::value,
                 "\n\nType T is not supported for log() with Publisher. Please do both (reference for helper_class.hpp for coding):\
-                \n1. Set up a template to tell which ROS type that your type [T = my_type] can be converted to. \
+                \n1. Set up a template to tell which ROS type that your type [T = my_type] can be converted to.\
                 \n    template <typename T> \
                 \n    struct LoggerROS::ROSMessageType<T, typename std::enable_if<std::is_same<T, [my_type]>::value> { using type = [ROS_type]; }\
                 \n2. Set up a fill function for your type [T = my_type]. and register it with LoggerROS::registerCustomType(fillFunc). with signature:\
                 \n    void fillFunc([ROS_type]& msg, const [my_type]& data) { /* your way to fill the msg with data. */ }\
-                \nFor exact which T, please check the error message above [T = ...].\n");
+                \n3. Register this function into the logger before using it.\
+                \n    logger.registerCustomType(std::function<void([ROS_type]&, const [my_type]&)>(fillFunc));\
+                \n\nFor exact which T, please check the error message above [T = ...].\n");
             static_assert(!std::is_integral<T>::value, "This template is enabled, but T is a integral type.\n Should not reach here, contact the developer.");
             static_assert(!std::is_floating_point<T>::value, "This template is enabled, but T is a floating point type.\n Should not reach here, contact the developer.");
             static_assert(!is_eigen_matrix<T>::value, "This template is enabled, but T is a Eigen::Matrix type.\n Should not reach here, contact the developer."); 
