@@ -1,7 +1,7 @@
 /**
- * @file 5-timestamp_File.cpp
+ * @file 7-macro_ts_File.cpp
  * @author Haowen Yao
- * @brief Example usage of the macros
+ * @brief Example usage of macros with File logger in timestamp mode
  * @date 2026-1-22
  * 
  * @copyright Copyright (c) 2026

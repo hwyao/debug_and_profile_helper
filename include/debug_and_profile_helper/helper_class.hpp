@@ -303,6 +303,42 @@ namespace debug_and_profile_helper {
          */
         template <typename T>
         struct is_eigen_matrix<T, typename std::enable_if<std::is_base_of<Eigen::MatrixBase<T>, T>::value>::type> : std::true_type {};
+
+        /**
+         * @brief A helper template to check if a ROS message type has a header field.
+         * 
+         * @tparam T The ROS message type to check.
+         * @tparam Enable SFINAE parameter.
+         * 
+         * Default implementation, returns false when T does not have header.stamp.
+         */
+        template <typename T, typename Enable = void>
+        struct has_header : std::false_type {};
+
+        /**
+         * @brief Specialization to detect ROS message types with header.stamp field.
+         * 
+         * @tparam T The ROS message type to check.
+         * 
+         * Enabled when the type has a header.stamp member that can be assigned a ros::Time.
+         */
+        template <typename T>
+        struct has_header<T, typename std::enable_if<
+            std::is_same<decltype(std::declval<T>().header.stamp), ros::Time>::value
+        >::type> : std::true_type {};
+
+        /**
+         * @brief A helper template to check if a type is a built-in math type.
+         * 
+         * @tparam T The type to check.
+         * 
+         * Returns true if T is arithmetic (int, float, etc.) or an Eigen matrix type.
+         * These types use the special packed Float64MultiArray format for timestamps.
+         */
+        template <typename T>
+        struct is_builtin_math_type : std::integral_constant<bool,
+            std::is_arithmetic<T>::value || is_eigen_matrix<T>::value
+        > {};
       
         /**
          * @brief A template to fill the ROS message with the data.
@@ -451,8 +487,53 @@ namespace debug_and_profile_helper {
          * @param data 
          * @param timestep 
          */
+        /**
+         * @brief Inject timestamp into ROS message header (for messages with header).
+         * 
+         * @tparam MsgType The ROS message type.
+         * @param msg The ROS message to inject timestamp into.
+         * @param timestep The timestamp value to inject.
+         * 
+         * This overload is enabled when the message type has a header.stamp field.
+         * It directly assigns the timestamp to msg.header.stamp.
+         */
+        template <typename MsgType>
+        typename std::enable_if<has_header<MsgType>::value>::type
+        injectTimestamp(MsgType& msg, double timestep) {
+            msg.header.stamp = ros::Time(timestep);
+        }
+
+        /**
+         * @brief Attempt to inject timestamp into ROS message without header (warning version).
+         * 
+         * @tparam MsgType The ROS message type.
+         * @param msg The ROS message (unused).
+         * @param timestep The timestamp value (unused).
+         * 
+         * This overload is enabled when the message type does NOT have a header.stamp field.
+         * It issues a throttled warning to inform the user that timestamp cannot be injected.
+         */
+        template <typename MsgType>
+        typename std::enable_if<!has_header<MsgType>::value>::type
+        injectTimestamp(MsgType& msg, double timestep) {
+            ROS_WARN_STREAM_THROTTLE(5.0, "debug_and_profile_helper: Timestamp exists but message type "
+                << typeid(MsgType).name() << " has no header field. Publishing without timestamp.");
+        }
+
+        /**
+         * @brief Log data with timestamp in packed Float64MultiArray format.
+         * 
+         * @tparam T The type of the data to log.
+         * @param pub_ptr The shared pointer to the ROS publisher, initialized if empty.
+         * @param name The name of the data.
+         * @param data The data to be logged.
+         * @param timestep The timestamp value.
+         * 
+         * This function packs scalar or Eigen data into Float64MultiArray with format:
+         * [timestamp, flattened_data...]. Used for built-in math types only.
+         */
         template <typename T>
-        void logTimestep(std::shared_ptr<ros::Publisher>& pub_ptr, const std::string& name, const T& data, double timestep) {
+        void logTimestepPacked(std::shared_ptr<ros::Publisher>& pub_ptr, const std::string& name, const T& data, double timestep) {
             using MsgType = std_msgs::Float64MultiArray;
             if (!pub_ptr) {
                 pub_ptr = std::make_shared<ros::Publisher>(data_ -> nh -> advertise<MsgType>
@@ -473,7 +554,7 @@ namespace debug_and_profile_helper {
 
     public:
         /**
-         * @brief log a message to the file.
+         * @brief log a message to ROS.
          * 
          * @tparam T The type of the data to log.
          * @param pub_ptr The shared pointer to the ROS publisher, initialized if empty.
@@ -481,16 +562,59 @@ namespace debug_and_profile_helper {
          * @param data The data to be logged.
          * @return void.
          * 
-         * Log a message to ROS. Dispatch to Normal or Timestep mode.
+         * Log a message to ROS with type-aware timestamp handling:
+         * - Built-in math types (scalars, Eigen): Use packed Float64MultiArray format with timestamp
+         * - Custom/ROS types: Use registered fillFunc and inject timestamp into header if available
          */
         template <typename T>
         typename std::enable_if<is_supported_type<T>::value>::type
         log(std::shared_ptr<ros::Publisher>& pub_ptr, const std::string& name, const T& data) {
-            if (auto ts = getTimestep()) {
-                logTimestep(pub_ptr, name, data, *ts);
-            } else {
-                registerNormalLog();
-                logNormal(pub_ptr, name, data);
+            auto ts_opt = getTimestep();
+
+            // Branch A: Built-in math types (scalars, Eigen matrices)
+            // Maintain backward compatibility with packed timestamp format
+            if constexpr (is_builtin_math_type<T>::value) {
+                if (ts_opt) {
+                    // Use packed Float64MultiArray: [timestamp, flattened_data...]
+                    logTimestepPacked(pub_ptr, name, data, *ts_opt);
+                } else {
+                    registerNormalLog();
+                    logNormal(pub_ptr, name, data);
+                }
+            }
+            // Branch B: Custom/ROS types
+            // Use registered fillFunc and inject timestamp into message header if available
+            else {
+                using MsgType = typename ROSMessageType<T>::type;
+                
+                // Initialize publisher if needed
+                if (!pub_ptr) {
+                    pub_ptr = std::make_shared<ros::Publisher>(data_ -> nh -> advertise<MsgType>
+                                    (data_->topicPrefix + "/" + name, data_->queue_size));
+                }
+                
+                // Create and fill message
+                MsgType msg;
+                auto it = data_ -> customFillFuncs_.find(std::type_index(typeid(T)));
+                if (it != data_ -> customFillFuncs_.end()) {
+                    it->second(&msg, &data);
+                } else {
+                    ROS_ERROR_STREAM_ONCE("debug_and_profile_helper: No fill function registered for synthesizing ROS message [" 
+                                           + std::string(typeid(MsgType).name()) + "] from type [" + std::string(typeid(T).name()) + "].\
+                                             \nPlease register a conversion function with LoggerROS::registerCustomType(fillFunc) before first time using publisher with signature:\
+                                             \n\n    void fillFunc("+std::string(typeid(MsgType).name())+"& msg, const ["+std::string(typeid(T).name())+"]& data) { \
+                                             \n        /* your way to fill the msg with data. */ \
+                                             \n      }");
+                }
+                
+                // Inject timestamp if in timestep mode
+                if (ts_opt) {
+                    injectTimestamp(msg, *ts_opt);
+                } else {
+                    registerNormalLog();
+                }
+                
+                pub_ptr -> publish(msg);
             }
         }
     
