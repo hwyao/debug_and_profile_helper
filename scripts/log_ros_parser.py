@@ -640,6 +640,173 @@ def get_available_topics(bag_path: str) -> List[Dict[str, str]]:
         raise RuntimeError(f"Error reading bag file: {e}")
 
 
+def parse_rosbag_topic_bagpy(
+    bag_path: str,
+    topic: str,
+    column_target: str,
+    extract_dict: dict,
+    mode: str = 'idx',
+    verbose: bool = False
+) -> pd.DataFrame:
+    """
+    Parse a rosbag topic using bagpy, extracting YAML data into structured columns.
+    
+    This function loads a rosbag using bagpy, converts the specified topic to CSV,
+    reads it into a pandas DataFrame, and transforms it according to the provided
+    column mappings and extraction rules.
+    
+    Args:
+        bag_path: Path to the ROS bag file
+        topic: Topic name to parse
+        column_target: Name of the column containing YAML data to extract
+        extract_dict: Dictionary mapping YAML paths to column names
+                     e.g., {'primitive.type': 'my_column_name'}
+        mode: Either 'idx' (for list of YAMLs) or 'non-idx' (for single YAML)
+        verbose: If True, display parsing information
+    
+    Returns:
+        pd.DataFrame: Transformed DataFrame with extracted columns
+    
+    Example:
+        >>> column_mapping = {
+        ...     'primitive.type': 'primitive.type',
+        ...     'primitive_pose.position.x': 'primitive.position.x',
+        ... }
+        >>> df = parse_rosbag_topic_bagpy(
+        ...     'data.bag',
+        ...     '/debug_and_profile_helper/DBG_obstacles',
+        ...     'obstacles',
+        ...     column_mapping,
+        ...     mode='idx'
+        ... )
+    """
+    from bagpy import bagreader
+    import re
+    
+    # Load bag using bagpy and convert to panda table
+    bag = bagreader(bag_path)
+    csv_path = bag.message_by_topic(topic)
+    df_raw = pd.read_csv(csv_path, quotechar='"')
+    
+    if verbose:
+        print(f"Loaded {len(df_raw)} rows from topic {topic}")
+    
+    # Helper function to parse YAML list
+    def parse_yaml_list(text):
+        if not isinstance(text, str) or not text.strip():
+            return []
+        content = text.strip()
+        if content.startswith('[') and content.endswith(']'):
+            content = content[1:-1].strip()
+        if not content:
+            return []
+        # Split by comma followed by the first key pattern
+        parts = re.split(r',\s*(?=\w+:)', content)
+        res = []
+        for p in parts:
+            try:
+                obj = yaml.safe_load(p.strip())
+                if obj:
+                    res.append(obj)
+            except:
+                continue
+        return res
+    
+    # Helper function to get nested value from dictionary
+    def get_nested_value(obj, path):
+        keys = path.split('.')
+        value = obj
+        for key in keys:
+            if isinstance(value, dict):
+                value = value.get(key)
+            else:
+                return None
+            if value is None:
+                return None
+        return value
+    
+    # Helper function to filter and reorder columns
+    def filter_columns(df, extract_dict, mode):
+        """Keep only requested columns in proper order."""
+        # Base columns that should always be kept
+        base_cols = ['time_bag', 'time_count'] if mode == 'non-idx' else ['time_bag', 'time_count', 'idx']
+        # Columns from extract_dict (the VALUES, which are the new column names)
+        requested_cols = list(extract_dict.values())
+        # Combine and filter to only existing columns
+        all_wanted_cols = base_cols + requested_cols
+        existing_cols = [c for c in all_wanted_cols if c in df.columns]
+        return df[existing_cols]
+    
+    # Process based on mode
+    if mode == 'idx':
+        # Mode: list of YAML objects
+        # Parse all YAML lists first (vectorized operation)
+        yaml_lists = df_raw[column_target].apply(parse_yaml_list)
+        
+        # Process each row using itertuples (faster than iterrows)
+        all_rows = []
+        has_time_count = 'header.stamp.secs' in df_raw.columns
+        
+        for idx, (row_data, yaml_list) in enumerate(zip(df_raw.itertuples(), yaml_lists)):
+            if not yaml_list:
+                yaml_list = [{}]  # Keep at least one row with empty data
+            
+            # Normalize the list of YAML objects
+            df_step = pd.json_normalize(yaml_list)
+            
+            # Add time columns (use index-based access for columns with dots)
+            df_step['time_bag'] = row_data.Time
+            if has_time_count:
+                df_step['time_count'] = df_raw.iloc[idx]['header.stamp.secs']
+            
+            # Add index column
+            df_step['idx'] = range(len(df_step))
+            
+            all_rows.append(df_step)
+        
+        # Concatenate all rows
+        df_result = pd.concat(all_rows, ignore_index=True)
+        
+        # Rename columns according to extract_dict
+        df_result.rename(columns=extract_dict, inplace=True)
+        
+        # Filter to keep only requested columns
+        df_result = filter_columns(df_result, extract_dict, mode='idx')
+        
+    else:  # mode == 'non-idx'
+        # Initialize result with time columns
+        df_result = pd.DataFrame()
+        df_result['time_bag'] = df_raw['Time']
+        
+        if 'header.stamp.secs' in df_raw.columns:
+            df_result['time_count'] = df_raw['header.stamp.secs']
+        
+        # Define extraction function for efficiency
+        def create_extractor(yaml_path):
+            def extract_value(text):
+                if not isinstance(text, str) or not text.strip():
+                    return None
+                try:
+                    obj = yaml.safe_load(text.strip())
+                    return get_nested_value(obj, yaml_path)
+                except:
+                    return None
+            return extract_value
+        
+        # Apply extraction for each mapping
+        for yaml_path, col_name in extract_dict.items():
+            extractor = create_extractor(yaml_path)
+            df_result[col_name] = df_raw[column_target].apply(extractor)
+        
+        # Filter to keep only requested columns (non-idx mode doesn't have 'idx' column)
+        df_result = filter_columns(df_result, extract_dict, mode='non-idx')
+    
+    if verbose:
+        print(f"Result shape: {df_result.shape}")
+        print(f"Columns: {list(df_result.columns)}")
+    
+    return df_result
+
 # Command-line interface placeholder (to be implemented later)
 if __name__ == '__main__':
     print(
