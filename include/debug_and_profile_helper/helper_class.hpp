@@ -387,15 +387,18 @@ namespace debug_and_profile_helper {
             // For matrices: returns a const reference (no copy)
             // For expressions: evaluates to a temporary matrix
             auto evaluated = data.eval();
+            // Convert to row-major format for ROS (Eigen is column-major by default)
+            using Scalar = typename T::Scalar;
+            Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> evaluated_rowmajor = evaluated;
             msg.layout.dim.resize(2);
             msg.layout.dim[0].label = "rows";
-            msg.layout.dim[0].size = evaluated.rows();
-            msg.layout.dim[0].stride = evaluated.rows() * evaluated.cols();
+            msg.layout.dim[0].size = evaluated_rowmajor.rows();
+            msg.layout.dim[0].stride = evaluated_rowmajor.rows() * evaluated_rowmajor.cols();
             msg.layout.dim[1].label = "cols";
-            msg.layout.dim[1].size = evaluated.cols();
-            msg.layout.dim[1].stride = evaluated.cols();
-            msg.data.resize(evaluated.size());
-            std::copy(evaluated.data(), evaluated.data() + evaluated.size(), msg.data.begin());
+            msg.layout.dim[1].size = evaluated_rowmajor.cols();
+            msg.layout.dim[1].stride = evaluated_rowmajor.cols();
+            msg.data.resize(evaluated_rowmajor.size());
+            std::copy(evaluated_rowmajor.data(), evaluated_rowmajor.data() + evaluated_rowmajor.size(), msg.data.begin());
         }
 
         /**
@@ -425,15 +428,18 @@ namespace debug_and_profile_helper {
                 msg.layout.dim[2].stride = 1;
             } else if constexpr (is_eigen_matrix<T>::value) {
                 auto evaluated = data.eval();
+                // Convert to row-major format for ROS (Eigen is column-major by default)
+                using Scalar = typename T::Scalar;
+                Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> evaluated_rowmajor = evaluated;
                 msg.layout.dim[1].label = "rows";
-                msg.layout.dim[1].size = evaluated.rows();
-                msg.layout.dim[1].stride = evaluated.rows() * evaluated.cols();
+                msg.layout.dim[1].size = evaluated_rowmajor.rows();
+                msg.layout.dim[1].stride = evaluated_rowmajor.rows() * evaluated_rowmajor.cols();
                 msg.layout.dim[2].label = "cols";
-                msg.layout.dim[2].size = evaluated.cols();
-                msg.layout.dim[2].stride = evaluated.cols();
-                value_vec.resize(evaluated.size());
-                for(int i=0; i<evaluated.size(); ++i) {
-                    value_vec[i] = *(evaluated.data() + i);
+                msg.layout.dim[2].size = evaluated_rowmajor.cols();
+                msg.layout.dim[2].stride = evaluated_rowmajor.cols();
+                value_vec.resize(evaluated_rowmajor.size());
+                for(int i=0; i<evaluated_rowmajor.size(); ++i) {
+                    value_vec[i] = *(evaluated_rowmajor.data() + i);
                 }
             } else {
                 ROS_ERROR_STREAM_ONCE("debug_and_profile_helper: Timestep mode unsupported for this type"+std::string(typeid(T).name())+".\n Should not reach here, contact the developer.");
