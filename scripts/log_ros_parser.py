@@ -230,17 +230,22 @@ def parse_rosbag_topic(
     df_regularized = df[['time_bag', 'time_count']].copy()
     df_regularized[data_label] = df_parsed.apply(lambda x: x['msg']['data'])
     
-    # Get dimensions from first message
-    first_dims = df_parsed.iloc[0]['msg']['layout']['dim']
+    # Get dimensions - look for first valid (non-zero) values across all messages
+    # First, check if we have any dimension structure at all
+    all_dims_list = df_parsed.apply(lambda x: x['msg']['layout']['dim'])
+    if all_dims_list.empty or all(len(dims) == 0 for dims in all_dims_list):
+        raise ValueError("No dimension data found in any messages")
     
     if mode == 'row_separation':
         # Row separation mode (like projector)
         # Split data into rows based on the first dimension
         
-        if len(first_dims) == 0:
-            raise ValueError("Cannot use row_separation mode with 0-dimensional data")
-        
-        dim1 = first_dims[0]['size']
+        # Find first non-zero dimension size from all messages
+        all_dim1_sizes = df_parsed.apply(lambda x: x['msg']['layout']['dim'][0]['size'] if len(x['msg']['layout']['dim']) > 0 else 0)
+        valid_dim1_sizes = all_dim1_sizes[all_dim1_sizes > 0]
+        if valid_dim1_sizes.empty:
+            raise ValueError("No valid dimensions found in row_separation mode data")
+        dim1 = int(valid_dim1_sizes.iloc[0])
         
         # Reshape data into list of rows
         df_regularized[data_label] = df_regularized[data_label].apply(
@@ -271,7 +276,7 @@ def parse_rosbag_topic(
                 f"Expected dimension: {dim1}, but got different sizes."
             )
             if verbose:
-                print(f"\n❌ Error rows detected:")
+                print(f"\n❌ Error rows:")
                 print(df_errors)
         
         # Reset index and reorder columns
@@ -289,18 +294,40 @@ def parse_rosbag_topic(
         # Whole array mode (like jacobian)
         # Keep data as complete N-dimensional arrays
         
-        if len(first_dims) < 2:
+        # Extract expected dimensions - find first valid (non-zero) sizes from all messages
+        # Determine number of dimensions from first message with non-empty dims
+        first_valid_dims = None
+        for dims in all_dims_list:
+            if len(dims) > 0:
+                first_valid_dims = dims
+                break
+        
+        if first_valid_dims is None:
+            raise ValueError("No valid dimensions found in whole_array mode data")
+        
+        if len(first_valid_dims) < 2:
             warnings.warn(
-                f"Data has {len(first_dims)} dimensions. "
+                f"Data has {len(first_valid_dims)} dimensions. "
                 f"whole_array mode is typically used for 2D+ data."
             )
         
-        # Extract expected dimensions
-        expected_size = 1
+        num_dims = len(first_valid_dims)
         dim_sizes = []
-        for dim in first_dims:
-            dim_sizes.append(dim['size'])
-            expected_size *= dim['size']
+        expected_size = 1
+        
+        # For each dimension position, find first non-zero size across all messages
+        for dim_idx in range(num_dims):
+            all_sizes_for_dim = df_parsed.apply(
+                lambda x: x['msg']['layout']['dim'][dim_idx]['size'] 
+                if len(x['msg']['layout']['dim']) > dim_idx else 0
+            )
+            valid_sizes = all_sizes_for_dim[all_sizes_for_dim > 0]
+            if valid_sizes.empty:
+                raise ValueError(f"No valid size found for dimension {dim_idx} in whole_array mode data")
+            
+            dim_size = int(valid_sizes.iloc[0])
+            dim_sizes.append(dim_size)
+            expected_size *= dim_size
         
         # Create layout column
         df_regularized[f'{data_label}_layout'] = df_parsed.apply(
@@ -312,10 +339,10 @@ def parse_rosbag_topic(
         if not df_errors.empty:
             warnings.warn(
                 f"⚠️  Data size errors found in {len(df_errors)} rows. "
-                f"Expected total size: {expected_size} ({' × '.join(map(str, dim_sizes))})"
+                f"Expected total size: {expected_size} ({' x '.join(map(str, dim_sizes))})"
             )
             if verbose:
-                print(f"\n❌ Error rows detected:")
+                print(f"\n❌ Error rows:")
                 print(df_errors)
         
         # Reset index and reorder columns
@@ -334,6 +361,256 @@ def parse_rosbag_topic(
         print(f"   Columns: {list(df_regularized.columns)}")
     
     return df_regularized
+
+
+def align_rosbag_topics(
+    dataframes: List[pd.DataFrame]
+) -> pd.DataFrame:
+    """
+    Align and merge multiple ROS bag topic DataFrames based on time and index.
+    
+    This function intelligently merges DataFrames from multiple topics by detecting
+    the appropriate alignment strategy based on available time columns ('time_bag',
+    'time_count') and index columns ('idx').
+    
+    Time Alignment Scenarios:
+    - Scene 1: All tables have both 'time_bag' AND 'time_count'
+      * Validates that both lead to consistent merging results
+      * Uses 'time_count' as primary evidence (more reliable)
+      * Warns if 'time_bag' and 'time_count' produce different alignments
+      
+    - Scene 2: All tables have 'time_bag' but NO 'time_count'
+      * Always warns that 'time_bag' is being used (less reliable due to ROS delays)
+      * Merges based on 'time_bag' values
+      
+    - Scene 3: Mixed or neither column present
+      * Raises error - no reliable merging evidence
+    
+    Column Alignment Scenarios:
+    - Scene A: All have 'idx' column with matching unique idx values
+      * Uses 'idx' as additional merging key (row-level alignment)
+      * For each timestamp, only rows with same 'idx' are merged
+      
+    - Scene B: All without 'idx', no overlapping data columns
+      * Direct merge on time columns only
+      
+    - Scene C: Problematic cases
+      * Mixed presence/absence of 'idx' column
+      * Different unique 'idx' values across DataFrames
+      * Overlapping data column names (except time/idx/layout columns)
+      * Raises error with detailed explanation
+    
+    Args:
+        dataframes: List of pandas DataFrames to align and merge.
+                   Each should have been produced by parse_rosbag_topic().
+        time_tolerance: Tolerance for floating point comparison of time_count values.
+                       Default: 1e-6
+    
+    Returns:
+        pd.DataFrame: Merged DataFrame with aligned data from all topics.
+                     Columns: time_bag, time_count (if available), idx (if applicable),
+                             and all data columns from input DataFrames.
+    
+    Raises:
+        ValueError: If DataFrames cannot be reliably merged (inconsistent time columns,
+                   incompatible idx columns, or overlapping data columns)
+    
+    Examples:
+        >>> # Merge two whole_array mode topics (no idx)
+        >>> df_q = parse_rosbag_topic('data.bag', '/DBG_q', 'whole_array')
+        >>> df_jac = parse_rosbag_topic('data.bag', '/DBG_jacobian', 'whole_array')
+        >>> df_merged = align_rosbag_topics([df_q, df_jac])
+        >>> # Result: time_bag, time_count, DBG_q, DBG_q_layout, DBG_jacobian, DBG_jacobian_layout
+        
+        >>> # Merge row_separation mode topics (with idx)
+        >>> df_proj = parse_rosbag_topic('data.bag', '/DBG_projector', 'row_separation')
+        >>> df_dist = parse_rosbag_topic('data.bag', '/DBG_distances', 'row_separation')
+        >>> df_merged = align_rosbag_topics([df_proj, df_dist])
+        >>> # Result: time_bag, time_count, idx, DBG_projector, DBG_projector_layout, 
+        >>> #         DBG_distances, DBG_distances_layout
+    """
+    
+    if not dataframes:
+        raise ValueError("No DataFrames provided for alignment")
+    
+    if len(dataframes) == 1:
+        warnings.warn("Only one DataFrame provided, returning it as-is")
+        return dataframes[0].copy()
+    
+    # Check for empty DataFrames
+    for i, df in enumerate(dataframes):
+        if df.empty:
+            raise ValueError(f"DataFrame at index {i} is empty")
+    
+    # ===== TIME ALIGNMENT ANALYSIS =====
+    has_time_bag = [('time_bag' in df.columns) for df in dataframes]
+    has_time_count = [('time_count' in df.columns) for df in dataframes]
+    
+    all_have_time_bag = all(has_time_bag)
+    all_have_time_count = all(has_time_count)
+    
+    # Determine time alignment scenario
+    if all_have_time_bag and all_have_time_count:
+        # Scene 1: Both time columns present
+        time_scenario = 1
+        time_key = 'time_count'  # Use time_count as primary
+        
+    elif all_have_time_bag and not any(has_time_count):
+        # Scene 2: Only time_bag present
+        time_scenario = 2
+        time_key = 'time_bag'
+        warnings.warn("⚠️  Merging based on 'time_bag' only. This may be unreliable due to ROS timing delays. "
+            "Consider using data with 'time_count' (timestep) for more accurate alignment.")
+        
+    else:
+        # Scene 3: Mixed or neither
+        raise ValueError(
+            "Inconsistent time columns across DataFrames. "
+            f"time_bag present in: {[i for i, v in enumerate(has_time_bag) if v]}, "
+            f"time_count present in: {[i for i, v in enumerate(has_time_count) if v]}. "
+            "All DataFrames must have consistent time column structure for alignment."
+        )
+    
+    # ===== INDEX COLUMN ANALYSIS =====
+    has_idx = [('idx' in df.columns) for df in dataframes]
+    all_have_idx = all(has_idx)
+    none_have_idx = not any(has_idx)
+    
+    if all_have_idx:
+        # Scene A: All have idx - need to validate they're compatible
+        # Check that all DataFrames have the same unique idx values for each time point
+        idx_scenario = 'A'
+        unique_idx_sets = [set(df['idx'].unique()) for df in dataframes]
+        
+        # Check if all have the same unique idx values
+        if not all(idx_set == unique_idx_sets[0] for idx_set in unique_idx_sets):
+            raise ValueError(
+                "Incompatible 'idx' columns: DataFrames have different unique idx values. "
+                f"Unique idx per DataFrame: {[sorted(list(s)) for s in unique_idx_sets]}. "
+                "For row-level alignment, all DataFrames must have the same idx values."
+            )
+        
+        merge_keys = [time_key, 'idx']
+        
+    elif none_have_idx:
+        # Scene B: None have idx
+        idx_scenario = 'B'
+        merge_keys = [time_key]
+        
+    else:
+        # Scene C: Mixed idx presence
+        raise ValueError(
+            f"Mixed 'idx' column presence: present in DataFrames {[i for i, v in enumerate(has_idx) if v]}, "
+            f"absent in {[i for i, v in enumerate(has_idx) if not v]}. "
+            "All DataFrames must either all have 'idx' or all not have 'idx' for alignment."
+        )
+    
+    # ===== COLUMN OVERLAP ANALYSIS =====
+    # Extract data columns (exclude time, idx, and layout columns)
+    system_columns = {'time_bag', 'time_count', 'idx'}
+    
+    # Collect all data columns with their source DataFrame indices
+    all_data_cols = []
+    df_col_map = {}  # column -> list of df indices
+    
+    for i, df in enumerate(dataframes):
+        for col in df.columns:
+            if col not in system_columns:
+                all_data_cols.append(col)
+                if col not in df_col_map:
+                    df_col_map[col] = []
+                df_col_map[col].append(i)
+    
+    # Check for duplicates in flattened list
+    if len(all_data_cols) != len(set(all_data_cols)):
+        # Found duplicates - identify which columns and which DataFrames
+        overlapping_cols = [col for col, indices in df_col_map.items() if len(indices) > 1]
+        error_details = [f"'{col}' in DataFrames {indices}" for col, indices in df_col_map.items() if len(indices) > 1]
+        raise ValueError(
+            f"Overlapping data columns found: {', '.join(error_details)}. "
+            "Cannot merge DataFrames with duplicate column names. "
+            "Each topic should produce unique data column names."
+        )
+    
+    # ===== PERFORM MERGE =====
+    # Start with first DataFrame
+    result = dataframes[0].copy()
+    
+    # Merge remaining DataFrames one by one
+    for i, df in enumerate(dataframes[1:], start=1):
+        # Determine merge type based on time_key
+        if time_key == 'time_count':
+            # For time_count, use exact merge (numerical values should match)
+            result = pd.merge(
+                result, 
+                df, 
+                on=merge_keys,
+                how='outer',
+                suffixes=('', '_drop')
+            )
+            
+        else:  # time_bag
+            # For time_bag (Timedelta), use merge_asof for nearest neighbor matching
+            # This handles ROS timing delays better than exact merge
+            
+            if all_have_idx:
+                # With idx: need to merge_asof within each idx group
+                # Sort both DataFrames by time_bag
+                result_sorted = result.sort_values('time_bag')
+                df_sorted = df.sort_values('time_bag')
+                
+                # Merge by idx groups using merge_asof on time_bag
+                merged_groups = []
+                for idx_val in result_sorted['idx'].unique():
+                    result_group = result_sorted[result_sorted['idx'] == idx_val]
+                    df_group = df_sorted[df_sorted['idx'] == idx_val]
+                    
+                    if not df_group.empty:
+                        merged_group = pd.merge_asof(
+                            result_group,
+                            df_group,
+                            on='time_bag',
+                            by='idx',
+                            direction='nearest',
+                            suffixes=('', '_drop')
+                        )
+                        merged_groups.append(merged_group)
+                    else:
+                        # No matching idx in df, keep result_group as-is
+                        merged_groups.append(result_group)
+                
+                result = pd.concat(merged_groups, ignore_index=True)
+            else:
+                # Without idx: direct merge_asof on time_bag
+                result = result.sort_values('time_bag')
+                df_sorted = df.sort_values('time_bag')
+                
+                result = pd.merge_asof(
+                    result,
+                    df_sorted,
+                    on='time_bag',
+                    direction='nearest',
+                    suffixes=('', '_drop')
+                )
+    
+    # ===== SORT AND CLEAN =====
+    # Clean the drop rows 
+    result = result.loc[:, ~result.columns.str.endswith('_drop')]
+
+    # Sort by merge keys
+    result = result.sort_values(by=merge_keys).reset_index(drop=True)
+    
+    # Report merge statistics
+    if all_have_idx:
+        print(f"✅ Successfully merged {len(dataframes)} DataFrames")
+        print(f"   Merge strategy: time={time_key}, idx=True (scenario {idx_scenario})")
+        print(f"   Result shape: {result.shape} ({result.shape[0]} rows × {result.shape[1]} columns)")
+    else:
+        print(f"✅ Successfully merged {len(dataframes)} DataFrames")
+        print(f"   Merge strategy: time={time_key}, idx=False (scenario {idx_scenario})")
+        print(f"   Result shape: {result.shape} ({result.shape[0]} rows × {result.shape[1]} columns)")
+    
+    return result
 
 
 def get_available_topics(bag_path: str) -> List[Dict[str, str]]:
