@@ -241,15 +241,15 @@ def parse_rosbag_topic(
         # Split data into rows based on the first dimension
         
         # Find first non-zero dimension size from all messages
-        all_dim1_sizes = df_parsed.apply(lambda x: x['msg']['layout']['dim'][0]['size'] if len(x['msg']['layout']['dim']) > 0 else 0)
-        valid_dim1_sizes = all_dim1_sizes[all_dim1_sizes > 0]
-        if valid_dim1_sizes.empty:
+        all_cols_sizes = df_parsed.apply(lambda x: x['msg']['layout']['dim'][1]['size'] if len(x['msg']['layout']['dim']) > 1 else 0)
+        valid_cols_sizes = all_cols_sizes[all_cols_sizes > 0]
+        if valid_cols_sizes.empty:
             raise ValueError("No valid dimensions found in row_separation mode data")
-        dim1 = int(valid_dim1_sizes.iloc[0])
+        num_cols = int(valid_cols_sizes.iloc[0])
         
         # Reshape data into list of rows
         df_regularized[data_label] = df_regularized[data_label].apply(
-            lambda x: [x[i:i + dim1] for i in range(0, len(x), dim1)]
+            lambda x: [x[i:i + num_cols] for i in range(0, len(x), num_cols)]
         )
         
         # Handle empty data
@@ -265,7 +265,7 @@ def parse_rosbag_topic(
         
         # Create layout column for validation
         df_regularized[f'{data_label}_layout'] = df_regularized[data_label].apply(
-            lambda x: [1, dim1] if len(x) == dim1 else ([0, dim1] if len(x) == 0 else [None, dim1])
+            lambda x: [1, num_cols] if len(x) == num_cols else ([0, num_cols] if len(x) == 0 else [None, num_cols])
         )
         
         # Check for errors
@@ -273,7 +273,7 @@ def parse_rosbag_topic(
         if not df_errors.empty:
             warnings.warn(
                 f"⚠️  Data dimension errors found in {len(df_errors)} rows. "
-                f"Expected dimension: {dim1}, but got different sizes."
+                f"Expected columns: {num_cols}, but got different sizes."
             )
             if verbose:
                 print(f"\n❌ Error rows:")
@@ -286,7 +286,7 @@ def parse_rosbag_topic(
         
         if verbose:
             print(f"\n📈 Row separation mode:")
-            print(f"   Dimension per row: {dim1}")
+            print(f"   Columns per row: {num_cols}")
             print(f"   Total rows after separation: {len(df_regularized)}")
             print(f"   Unique time points: {df_regularized['time_bag'].nunique()}")
     
