@@ -34,16 +34,18 @@ EXTENSION_TO_FORMAT = {v: k for k, v in SUPPORTED_FORMATS.items()}
 
 
 class LogFileParser:
-    def __init__(self, suppress_warnings: bool = False, max_warnings: int = 50):
+    def __init__(self, suppress_warnings: bool = False, max_warnings: int = 50, verbose: bool = False):
         """
         Initialize log file parser
         
         Args:
             suppress_warnings: Whether to suppress warning messages
             max_warnings: Maximum number of warnings before stopping execution
+            verbose: Whether to print verbose output
         """
         self.suppress_warnings = suppress_warnings
         self.max_warnings = max_warnings
+        self.verbose = verbose
         self.warning_count = 0
         self.log_pattern = re.compile(
             r'\[([^\]]+)\] \[([^\]]+)\] \[([^\]]+)\] \[([^\]]+)\] ([^:]+):\s*(.*)'
@@ -55,6 +57,20 @@ class LogFileParser:
         self.variable_names = set()
         self.cycles = []
         
+        # Metrics
+        self.metrics = {
+            'total_lines': 0,
+            'empty_lines': 0,
+            'valid_lines': 0,
+            'continuation_lines': 0,
+            'unacceptable_lines': 0,
+        }
+        
+    def _log(self, message: str, force: bool = False):
+        """Print message if verbose or forced"""
+        if self.verbose or force:
+            print(message)
+
     def _warn(self, message: str, category=UserWarning):
         """Issue warning (if not suppressed) and check warning count"""
         self.warning_count += 1
@@ -64,7 +80,7 @@ class LogFileParser:
         if not self.suppress_warnings:
             warnings.warn(message, category)
     
-    def _trigger_temp_data_collection(self, temp_data: List[str], temp_timestamp: str, temp_var_name: str) -> dict:
+    def _trigger_temp_data_collection(self, temp_data: List[str], temp_timestamp: str, temp_var_name: str, frozen_ts: Optional[float] = None) -> dict:
         """
         Process temp_data and return data record for appending to data_records
         
@@ -72,6 +88,7 @@ class LogFileParser:
             temp_data: List of data strings to be combined
             temp_timestamp: Timestamp for the data record
             temp_var_name: Variable name for the data record
+            frozen_ts: Optional frozen timestep
             
         Returns:
             Dict containing the data record
@@ -80,7 +97,8 @@ class LogFileParser:
         return {
             'timestamp': temp_timestamp,
             'variable_name': temp_var_name,
-            'value': combined_data
+            'value': combined_data,
+            'frozen_ts': frozen_ts
         }
     
     def parse_file(self, file_path: str) -> pd.DataFrame:
@@ -112,6 +130,7 @@ class LogFileParser:
         temp_data = []
         temp_timestamp = None
         temp_var_name = None
+        temp_frozen_ts = None # Initialize
 
         # Add sentinel line to trigger final data collection
         sentinel_line = "[END] [END] [END] [END] END: END"
@@ -130,15 +149,30 @@ class LogFileParser:
             if match_next:   # New log entry found
                 # Save accumulated data from previous entry
                 if temp_data:
-                    record = self._trigger_temp_data_collection(temp_data, temp_timestamp, temp_var_name)
+                    record = self._trigger_temp_data_collection(temp_data, temp_timestamp, temp_var_name, temp_frozen_ts)
                     data_records.append(record)
                     temp_data = []
+                    temp_frozen_ts = None # Reset
 
                 # Initialize new entry
                 match = match_next
                 temp_timestamp, logger, level, file_info, temp_var_name, data = match.groups()
+                
+                # Check for frozen timestep prefix: "[123]; data"
+                frozen_ts = None
+                frozen_match = re.match(r'^\[([\d\.]+)\];\s*(.*)$', data.strip())
+                if frozen_match:
+                    frozen_ts = float(frozen_match.group(1))
+                    data = frozen_match.group(2)
+                
                 temp_data = [data.strip()]
+                # Update logic for expected_cols. If lines are matrix rows, they should match first line.
                 expected_cols = len(data.strip().split())
+                
+                # Store frozen_ts with the record (need to update _trigger_temp_data_collection or pass it somehow)
+                # But _trigger_temp_data_collection is called later.
+                # Use a temp variable for frozen_ts
+                temp_frozen_ts = frozen_ts # Store
                 valid_lines += 1
 
             elif self.continuation_pattern.match(lines[line_idx]): # Continuation line found
@@ -160,9 +194,10 @@ class LogFileParser:
             else: # Invalid line format - first trigger previous data collection, then clear and warn
                 self._warn(f"Line {line_idx + 1} format does not comply with specification: {lines[line_idx].strip()[:50]}...")
                 if temp_data:
-                    record = self._trigger_temp_data_collection(temp_data, temp_timestamp, temp_var_name)
+                    record = self._trigger_temp_data_collection(temp_data, temp_timestamp, temp_var_name, temp_frozen_ts)
                     data_records.append(record)
                     temp_data = []
+                    temp_frozen_ts = None
 
             # increase the data
             line_idx += 1
@@ -182,15 +217,24 @@ class LogFileParser:
         # Calculate statistics
         acceptable_lines = valid_lines + continuation_lines
         format_ratio = acceptable_lines / total_lines
+        
+        # Store metrics
+        self.metrics.update({
+            'total_lines': total_lines,
+            'empty_lines': empty_lines,
+            'valid_lines': valid_lines,
+            'continuation_lines': continuation_lines,
+            'unacceptable_lines': total_lines - acceptable_lines
+        })
 
-        # Always report line statistics
-        print(f"\n📊 Format validation and parsing results:")
-        print(f"   {total_lines} Total lines scanned. [+ {empty_lines} empty lines]")
-        print(f"   {acceptable_lines} Acceptable lines.")
-        print(f"    - {valid_lines} Valid log lines.")
-        print(f"    - {continuation_lines} Continuation lines.")
-        print(f"   {total_lines - acceptable_lines} Unacceptable lines with warning.")
-        print(f"   Format compliance ratio: {format_ratio:.1%}\n")
+        # Report line statistics
+        self._log(f"\n📊 Format validation and parsing results:")
+        self._log(f"   {total_lines} Total lines scanned. [+ {empty_lines} empty lines]")
+        self._log(f"   {acceptable_lines} Acceptable lines.")
+        self._log(f"    - {valid_lines} Valid log lines.")
+        self._log(f"    - {continuation_lines} Continuation lines.")
+        self._log(f"   {total_lines - acceptable_lines} Unacceptable lines with warning.")
+        self._log(f"   Format compliance ratio: {format_ratio:.1%}\n")
 
         if format_ratio < 0.9:  # At least 90% of lines should be acceptable
             self._warn(f"File format validation failed: only {format_ratio:.1%} of lines match expected format")
@@ -202,11 +246,11 @@ class LogFileParser:
             raise ValueError("No valid data records found")
             
         df = pd.DataFrame(data_records)
-        print(f"✅ Successfully parsed {len(df)} data records. (Should match valid lines: {valid_lines})")
-        print(f"📈 There are {df['variable_name'].nunique()} unique variables")
+        self._log(f"✅ Successfully parsed {len(df)} data records. (Should match valid lines: {valid_lines})")
+        self._log(f"📈 There are {df['variable_name'].nunique()} unique variables")
         return df
     
-    def to_csv(self, output_path: str, df: pd.DataFrame, dummy_separator: Optional[str] = None, force_overwrite: bool = False) -> None:
+    def to_csv(self, output_path: str, df: pd.DataFrame, dummy_separator: Optional[str] = None, force_overwrite: bool = False) -> dict:
         """
         Convert parsed DataFrame to CSV format with cycle detection and ordering
         
@@ -215,6 +259,9 @@ class LogFileParser:
             df: Parsed DataFrame with columns [timestamp, variable_name, value]
             dummy_separator: Cycle separator identifier
             force_overwrite: Whether to overwrite existing files
+            
+        Returns:
+            dict: Conversion metrics
         """
         if df.empty:
             self._warn("No data available for conversion")
@@ -227,8 +274,35 @@ class LogFileParser:
             else:
                 self._warn(f"Overwriting existing file: {output_path}")
         
+        
         # Process cycles based on dummy_separator
-        if dummy_separator:
+        # Helper: check is frozen_ts exists in df
+        has_frozen_ts = 'frozen_ts' in df.columns and df['frozen_ts'].notna().any()
+        cycle_method = "unknown"
+
+        # Process cycles based on frozen_ts (priority 1) or dummy_separator (priority 2)
+        if has_frozen_ts:
+            cycle_method = "frozen_timestep"
+            self._log("ℹ️  Using frozen timestep for cycle alignment.")
+            # Use frozen_ts as cycle_id directly (cast to int if it is effectively int)
+            # Or rank them to get cycle_id 1, 2, 3...
+            # But frozen_ts might not be monotonic if files are concatenated? Assuming monotonic.
+            # We can just use frozen_ts as the cycle identifier.
+            df['cycle_id'] = df['frozen_ts']
+            
+            # Since explicit cycle ID is available, we assume no separator processing needed for cycle logic.
+            # But we should still remove the dummy separator row if it exists?
+            if dummy_separator:
+                df_cycle_marked = df[df['variable_name'] != dummy_separator].copy()
+                unique_variable_names = [var for var in df['variable_name'].unique() if var != dummy_separator]
+            else:
+                df_cycle_marked = df.copy()
+                unique_variable_names = df['variable_name'].unique().tolist()
+                
+            separator_count = 0 # Not using separator for count
+
+        elif dummy_separator:
+            cycle_method = "dummy_separator"
             # Find separator indices
             separator_mask = df['variable_name'] == dummy_separator
             separator_indices = df[separator_mask].index.tolist()
@@ -268,21 +342,24 @@ class LogFileParser:
             df_cycle_marked = df[~separator_mask].copy()
             unique_variable_names = [var for var in unique_variable_names if var != dummy_separator]
         else:
+            cycle_method = "none"
             # Check if separator-like variables exist and warn
             separator_vars = [var for var in df['variable_name'].unique() if 'separator' in var.lower()]
             if separator_vars:
                 self._warn(f"Detected possible separator variables {separator_vars}, but --dummy_separator not specified")
-            raise NotImplementedError(f"Automatic separator detection is not yet implemented. Please specify --dummy_separator with one of: {separator_vars}")
+            if not has_frozen_ts:
+                raise NotImplementedError(f"Automatic separator detection is not yet implemented. Please specify --dummy_separator or use logs with frozen timestep.")
+        
         
         # Get unique variables in order of first appearance
         unique_cycles = sorted(df['cycle_id'].unique())
         
-        print(f"📊 Data processing statistics:")
-        print(f"   {len(df)} Total records")
-        print(f"   - {len(df_cycle_marked)} Processed records")
-        print(f"   - {separator_count} Separator count (dummy separator: {dummy_separator})")
-        print(f"   {len(unique_cycles)} Unique cycles")
-        print(f"   {len(unique_variable_names)} Variables (remove separator, appearance order): \n {', '.join(unique_variable_names)}\n")
+        self._log(f"📊 Data processing statistics:")
+        self._log(f"   {len(df)} Total records")
+        self._log(f"   - {len(df_cycle_marked)} Processed records")
+        self._log(f"   - {separator_count} Separator count (dummy separator: {dummy_separator})")
+        self._log(f"   {len(unique_cycles)} Unique cycles")
+        self._log(f"   {len(unique_variable_names)} Variables (remove separator, appearance order): \n {', '.join(unique_variable_names)}\n")
 
         # Create pivot table to convert to cycle-based CSV format
         # Each row represents a cycle, each column represents a variable
@@ -322,12 +399,12 @@ class LogFileParser:
                     if pd.isna(cycle_data[var]):
                         missing_positions.append(f"({cycle_id},{col_idx+1})")
             
-            print(f"📊 Pivot table statistics:")
-            print(f"   {total_cells} = {len(unique_cycles)} × {len(unique_variable_names)} Full Size")
-            print(f"   {data_cells} Available data")
+            self._log(f"📊 Pivot table statistics:")
+            self._log(f"   {total_cells} = {len(unique_cycles)} × {len(unique_variable_names)} Full Size")
+            self._log(f"   {data_cells} Available data")
             if missing_cells > 0:
-                print(f"   Missing data:")
-                print(f"{', '.join(missing_positions[:10])}{'...' if len(missing_positions) > 10 else ''}\n")
+                self._log(f"   Missing data:")
+                self._log(f"{', '.join(missing_positions[:10])}{'...' if len(missing_positions) > 10 else ''}\n")
             
             # Fill NaN values with 'NaN' string for CSV output
             pivot_df = pivot_df.fillna('NaN')
@@ -338,8 +415,18 @@ class LogFileParser:
         # Write to CSV file
         try:
             pivot_df.to_csv(output_path, index=False)
-            print(f"📁 Output saved to: {output_path}")
-            print(f"📈 CSV format: {len(unique_cycles)} rows × {len(column_order)} columns")
+            self._log(f"📁 Output saved to: {output_path}")
+            self._log(f"📈 CSV format: {len(unique_cycles)} rows × {len(column_order)} columns")
+            
+            return {
+                'processed_records': len(df_cycle_marked),
+                'separator_count': separator_count,
+                'unique_cycles': len(unique_cycles),
+                'csv_rows': len(unique_cycles),
+                'available_data': data_cells,
+                'csv_cols': len(column_order),
+                'cycle_method': cycle_method,
+            }
         except Exception as e:
             raise IOError(f"Unable to write CSV file: {e}")
 
@@ -418,12 +505,18 @@ Example usage:
     parser.add_argument('--force', '-f', action='store_true',
                        help='Force overwrite existing output files')
     
+    parser.add_argument('--verbose', '-v', action='store_true',
+                       help='Enable verbose output')
+    
     args = parser.parse_args()
     
     try:
-        print("=" * 60)
-        print(f"{'INITIALIZATION':^60}")
-        print("=" * 60)
+        if args.verbose:
+            print("=" * 60)
+            print(f"{'INITIALIZATION':^60}")
+            print("=" * 60)
+        else:
+            print(f"Running in Summary Mode (use --verbose for full output)")
         
         # Validate output path and format consistency
         validated_output, validated_format = validate_output_and_format(args.output, args.convert_to)
@@ -441,44 +534,119 @@ Example usage:
             )
             output_file = f"{input_base}{ext}"
         
-        print(f"Input file:  {args.input_file}")
-        print(f"Output file: {output_file}")
-        print(f"Format:      {validated_format.upper()}")
-        if args.dummy_separator:
-            print(f"Separator:   '{args.dummy_separator}'")
-        print()
-        
-
-        print("=" * 60)
-        print(f"{'PARSING':^60}")
-        print("=" * 60)
-        print(f"Reading and parsing log file: {args.input_file}\n")
+        if args.verbose:
+            print(f"Input file:  {args.input_file}")
+            print(f"Output file: {output_file}")
+            print(f"Format:      {validated_format.upper()}")
+            if args.dummy_separator:
+                print(f"Separator:   '{args.dummy_separator}'")
+            print()
+            
+            print("=" * 60)
+            print(f"{'PARSING':^60}")
+            print("=" * 60)
+            print(f"Reading and parsing log file: {args.input_file}\n")
         
         # Create parser
-        parser_instance = LogFileParser(suppress_warnings=args.suppress_warnings)
+        parser_instance = LogFileParser(suppress_warnings=args.suppress_warnings, verbose=args.verbose)
         df = parser_instance.parse_file(args.input_file)
         
         if df.empty:
             print("⚠️  Warning: No valid data found")
             sys.exit(1)
-        print()
+        if args.verbose:
+            print()
 
-
-        print("=" * 60)
-        print(f"{'CONVERSION':^60}")
-        print("=" * 60)
-        
-        # distribute the df table to conversion functions
-        print(f"Converting to {validated_format.upper()} format...\n")
+            print("=" * 60)
+            print(f"{'CONVERSION':^60}")
+            print("=" * 60)
+            
+            # distribute the df table to conversion functions
+            print(f"Converting to {validated_format.upper()} format...\n")
+            
+        conversion_metrics = {}
         if validated_format == 'csv':
-            parser_instance.to_csv(output_file, df, dummy_separator=args.dummy_separator, force_overwrite=args.force)
-        print()
+            conversion_metrics = parser_instance.to_csv(output_file, df, dummy_separator=args.dummy_separator, force_overwrite=args.force)
+        
+        if args.verbose:
+            print()
+            print("=" * 60)
+            print(f"{'COMPLETED':^60}")
+            print("=" * 60)
+        
+        # --- Validation & Summary ---
+        if not conversion_metrics:
+            if args.verbose:
+                print("🎉 Conversion completed successfully")
+            return
 
+        # Gather metrics
+        metrics = parser_instance.metrics.copy()
+        
+        # Add conversion metrics
+        metrics['parsed_records'] = len(df)
+        metrics['total_records'] = len(df)
+        metrics.update(conversion_metrics)
+        
+        # Validation Checks
+        all_passed = True
+        validation_output = []
+        
+        def check(condition, message):
+            status = "[OK]" if condition else "[FAILED]"
+            validation_output.append(f"    {status} {message}")
+            return condition
 
-        print("=" * 60)
-        print(f"{'COMPLETED':^60}")
-        print("=" * 60)
-        print("🎉 Conversion completed successfully!")
+        validation_output.append("  Validation:")
+        
+        # Check 1: unacceptable_lines <= 1
+        all_passed &= check(metrics['unacceptable_lines'] <= 1, 
+                           f"Unacceptable lines: {metrics['unacceptable_lines']} (≦ 1)")
+        
+        # Check 2: parsed_records = valid_lines = total_records
+        all_passed &= check(metrics['parsed_records'] == metrics['valid_lines'] == metrics['total_records'],
+                           f"Parsed records: {metrics['parsed_records']} = Valid lines: {metrics['valid_lines']} = Total records: {metrics['total_records']}")
+        
+        # Check 3: processed_records = available_data
+        all_passed &= check(metrics['processed_records'] == metrics['available_data'],
+                           f"Processed records: {metrics['processed_records']} = Available data: {metrics['available_data']}")
+        
+        cycle_method = metrics.get('cycle_method', 'unknown')
+        
+        # Check 4: Cycle Logic (Conditional)
+        if cycle_method == 'dummy_separator':
+            sep = metrics['separator_count']
+            uniq = metrics['unique_cycles']
+            all_passed &= check(sep <= uniq <= sep + 1,
+                               f"Unique cycles: {uniq} (Separator count: {sep}, diff: {uniq - sep}) [Method: {cycle_method}]")
+        elif cycle_method == 'frozen_timestep':
+             all_passed &= check(metrics['unique_cycles'] >= 1,
+                                f"Unique cycles: {metrics['unique_cycles']} >= 1 [Method: {cycle_method}]")
+        
+        # Check 5: unique_cycles = csv_rows
+        all_passed &= check(metrics['unique_cycles'] == metrics['csv_rows'],
+                           f"Unique cycles: {metrics['unique_cycles']} = CSV rows: {metrics['csv_rows']}")
+
+        if 'csv_cols' in metrics:
+             validation_output.append(f"    [INFO] CSV columns: {metrics['csv_cols']}")
+
+        # Print Conclusion
+        if args.verbose:
+            for line in validation_output:
+                print(line)
+            if all_passed:
+                print("\n🎉 Conversion completed successfully!")
+            else:
+                print("\n⚠️  Success but validation failed")
+        else:
+            # Short summary for non-verbose
+            if all_passed:
+                 print(f"✅ Success - All checks passed (Method: {cycle_method})")
+            else:
+                 print(f"⚠️  Success but validation failed (Method: {cycle_method})")
+                 for line in validation_output:
+                     print(line)
+
         print()
         
     except Exception as e:

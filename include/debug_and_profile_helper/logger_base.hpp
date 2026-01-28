@@ -10,8 +10,8 @@
 #ifndef DEBUG_AND_PROFILE_HELPER__LOGGER_BASE_HPP
 #define DEBUG_AND_PROFILE_HELPER__LOGGER_BASE_HPP
 
-#include <string>
-#include <sstream>
+#include <optional>
+#include <stdexcept>
 
 namespace debug_and_profile_helper {
 
@@ -49,6 +49,46 @@ public:
      * functions can be added with the same name.
      */
     virtual void log() const = 0;
+
+    /**
+     * @brief Increase the timestep counter.
+     *
+     * This function initializes the timestep counter to 0 if it is not set, otherwise increases it by 1.
+     * It also checks if any normal log has been issued before, if so, it will throw a runtime error.
+     */
+    void stepTimestep() {
+        if (hasLoggedNormalData_) {
+            throw std::runtime_error("LoggerBase: Cannot switch to Timestep mode after normal logging has occurred.");
+        }
+        if (!currentTimestep_.has_value()) {
+            currentTimestep_ = 0.0;
+        } else {
+            currentTimestep_ = currentTimestep_.value() + 1.0;
+        }
+    }
+
+    /**
+     * @brief Get the current timestep.
+     * 
+     * @return std::optional<double> The current timestep.
+     */
+    std::optional<double> getTimestep() const {
+        return currentTimestep_;
+    }
+
+protected:
+    /**
+     * @brief Register a normal log event.
+     * 
+     * This function marks that a normal log has occurred. It is providing checks if the logger is in Timestep mode.
+     */
+    void registerNormalLog() {
+        // hasLoggedNormalData_ tracks if we have done normal logging.
+        this->hasLoggedNormalData_ = true;
+    }
+
+    std::optional<double> currentTimestep_;
+    bool hasLoggedNormalData_ = false;
 };
 
 } // namespace debug_and_profile_helper
