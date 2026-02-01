@@ -157,14 +157,18 @@ if (DBGNPROF_BUILD_EXAMPLE)
   # the list of example names in the example folder
   list(APPEND example_names
     1-raw_LoggerFile
-    3-macro_File
+    3-raw_ts_File
+    5-macro_File
+    7-macro_ts_File
   )
 
   # the list of example names with ROS functionalities
   if (DBGNPROF_COMPILE_IN_ROS)
     list(APPEND example_names
       2-raw_LoggerROS
-      4-macro_ROS
+      4-raw_ts_ROS
+      6-macro_ROS
+      8-macro_ts_ROS
     )
   endif()
 
