@@ -452,12 +452,10 @@ def align_rosbag_topics(
     # Determine time alignment scenario
     if all_have_time_bag and all_have_time_count:
         # Scene 1: Both time columns present
-        time_scenario = 1
-        time_key = 'time_count'  # Use time_count as primary
+        time_key = 'time_count' 
         
     elif all_have_time_bag and not any(has_time_count):
         # Scene 2: Only time_bag present
-        time_scenario = 2
         time_key = 'time_bag'
         warnings.warn("⚠️  Merging based on 'time_bag' only. This may be unreliable due to ROS timing delays. "
             "Consider using data with 'time_count' (timestep) for more accurate alignment.")
@@ -477,24 +475,9 @@ def align_rosbag_topics(
     none_have_idx = not any(has_idx)
     
     if all_have_idx:
-        # Scene A: All have idx - need to validate they're compatible
-        # Check that all DataFrames have the same unique idx values for each time point
-        idx_scenario = 'A'
-        unique_idx_sets = [set(df['idx'].unique()) for df in dataframes]
-        
-        # Check if all have the same unique idx values
-        if not all(idx_set == unique_idx_sets[0] for idx_set in unique_idx_sets):
-            raise ValueError(
-                "Incompatible 'idx' columns: DataFrames have different unique idx values. "
-                f"Unique idx per DataFrame: {[sorted(list(s)) for s in unique_idx_sets]}. "
-                "For row-level alignment, all DataFrames must have the same idx values."
-            )
-        
         merge_keys = [time_key, 'idx']
         
     elif none_have_idx:
-        # Scene B: None have idx
-        idx_scenario = 'B'
         merge_keys = [time_key]
         
     else:
@@ -524,7 +507,6 @@ def align_rosbag_topics(
     # Check for duplicates in flattened list
     if len(all_data_cols) != len(set(all_data_cols)):
         # Found duplicates - identify which columns and which DataFrames
-        overlapping_cols = [col for col, indices in df_col_map.items() if len(indices) > 1]
         error_details = [f"'{col}' in DataFrames {indices}" for col, indices in df_col_map.items() if len(indices) > 1]
         raise ValueError(
             f"Overlapping data columns found: {', '.join(error_details)}. "
@@ -550,8 +532,9 @@ def align_rosbag_topics(
             )
             
         else:  # time_bag
+            # Currently the code below does not guaratee to have a good result
             # For time_bag (Timedelta), use merge_asof for nearest neighbor matching
-            # This handles ROS timing delays better than exact merge
+            # This handles ROS timing jitter better than exact merge
             
             if all_have_idx:
                 # With idx: need to merge_asof within each idx group
@@ -594,24 +577,13 @@ def align_rosbag_topics(
                 )
     
     # ===== SORT AND CLEAN =====
-    # Clean the drop rows 
+    # Clean the drop rows, because time_bag can slightly vary, we drop one version.
     result = result.loc[:, ~result.columns.str.endswith('_drop')]
 
     # Sort by merge keys
     result = result.sort_values(by=merge_keys).reset_index(drop=True)
-    
-    # Report merge statistics
-    if all_have_idx:
-        print(f"✅ Successfully merged {len(dataframes)} DataFrames")
-        print(f"   Merge strategy: time={time_key}, idx=True (scenario {idx_scenario})")
-        print(f"   Result shape: {result.shape} ({result.shape[0]} rows × {result.shape[1]} columns)")
-    else:
-        print(f"✅ Successfully merged {len(dataframes)} DataFrames")
-        print(f"   Merge strategy: time={time_key}, idx=False (scenario {idx_scenario})")
-        print(f"   Result shape: {result.shape} ({result.shape[0]} rows × {result.shape[1]} columns)")
-    
+        
     return result
-
 
 def get_available_topics(bag_path: str) -> List[Dict[str, str]]:
     """
